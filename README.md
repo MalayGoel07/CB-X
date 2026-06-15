@@ -1,8 +1,8 @@
-# Qbot-X 🤖
+# CB-X 🤖
 
 **An intelligent AI-powered chatbot application with advanced reasoning capabilities and a modern web interface.**
 
-> Qbot-X is a full-stack web application that combines a React-based frontend with a FastAPI backend, enabling seamless interaction with AI models that showcase their reasoning process through real-time thought streaming.
+> CB-X is a full-stack web application that combines a React-based frontend with a FastAPI backend, enabling seamless interaction with AI models that showcase their reasoning process through real-time thought streaming.
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## 🎯 Overview
 
-Qbot-X is a sophisticated chatbot application designed to demonstrate advanced AI reasoning capabilities. It features:
+CB-X is a sophisticated chatbot application designed to demonstrate advanced AI reasoning capabilities. It features:
 
 - **Real-time thought streaming** - Watch the AI's reasoning process in real-time as it works through problems
 - **Multi-model support** - Switch between different AI models within the same conversation
@@ -377,26 +377,6 @@ npm run lint
 2. Use Pydantic models for request/response validation
 3. Implement JWT authentication where needed
 4. Test with curl or Postman
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Here's how you can help:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
-
-### Development Guidelines
-
-- Write clear, descriptive commit messages
-- Test your changes locally before pushing
-- Follow the existing code style
-- Update documentation as needed
-- Add comments for complex logic
 
 ---
 
