@@ -22,6 +22,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException
 from dotenv import load_dotenv
 import os
+from uuid import uuid4
 
 load_dotenv()
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
@@ -38,6 +39,14 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     history: List[Message] = []
+
+class ChatSession(BaseModel):
+    id: str
+    title: str
+    messages: List[Message] = Field(default_factory=list)
+
+class ChatsUpdate(BaseModel):
+    chats: List[ChatSession]
 
 @app.get("/")
 async def root():
@@ -141,6 +150,42 @@ async def save_history(
         {"$set": {"history": data["history"]}}
     )
     return {"message": "History saved"}
+
+@app.get("/chats")
+async def get_chats(current_user: Annotated[User, Depends(get_current_active_user)]):
+    user = users_collection.find_one({"username": current_user.username})
+    chats = user.get("chats")
+    if chats is not None:
+        return {"chats": chats}
+
+    legacy_history = user.get("history", [])
+    chats = []
+    if legacy_history:
+        first_prompt = next(
+            (message["content"] for message in legacy_history if message.get("role") == "user"),
+            "Imported chat",
+        )
+        chats.append({
+            "id": str(uuid4()),
+            "title": first_prompt[:60],
+            "messages": legacy_history,
+        })
+        users_collection.update_one(
+            {"username": current_user.username},
+            {"$set": {"chats": chats}},
+        )
+    return {"chats": chats}
+
+@app.post("/chats")
+async def save_chats(
+    data: ChatsUpdate,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+):
+    users_collection.update_one(
+        {"username": current_user.username},
+        {"$set": {"chats": [chat.model_dump() for chat in data.chats]}},
+    )
+    return {"message": "Chats saved"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
