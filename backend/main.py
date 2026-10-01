@@ -4,7 +4,16 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, Field
 from typing import List
-from general import Message, orchestrate
+from general import (
+    M_CODER,
+    M_MATH,
+    M_MERGER,
+    M_RESEARCH,
+    M_ROUTER,
+    M_WRITER,
+    Message,
+    orchestrate,
+)
 import uvicorn
 from db import users_collection
 from security import Token, UserSignup, authenticate_user, create_access_token, get_password_hash,get_current_active_user,User
@@ -33,6 +42,19 @@ class ChatRequest(BaseModel):
 @app.get("/")
 async def root():
     return {"message": "orch-7 is running!"}
+
+@app.get("/models")
+async def get_models():
+    return {
+        "models": [
+            {"role": "Router", "model": M_ROUTER},
+            {"role": "Research", "model": M_RESEARCH},
+            {"role": "Writer", "model": M_WRITER},
+            {"role": "Coder", "model": M_CODER},
+            {"role": "Maths", "model": M_MATH},
+            {"role": "Merger", "model": M_MERGER},
+        ]
+    }
 
 @app.post("/auth/login")
 async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]) -> Token:

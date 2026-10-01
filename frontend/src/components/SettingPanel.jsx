@@ -1,6 +1,6 @@
 function SettingPanel({ onClose }) {
   return (
-    <div className="w-[360px] min-h-screen bg-slate-900 flex flex-col relative overflow-hidden px-3">
+    <div className="w-[360px] min-h-screen bg-slate-900 flex flex-col relative overflow-hidden px-3 z-50">
       <div className="flex items-center justify-between px-2 py-5">
         <span className="font-mono text-[16px] font-bold tracking-[0.25em] text-blue-500 uppercase flex items-center gap-2">Settings</span>
         <button onClick={onClose} className="text-[13px] font-mono text-red-400 transition-colors">✕ close</button>

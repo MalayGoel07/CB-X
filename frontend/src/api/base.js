@@ -1,50 +1,78 @@
 async function base(input, onchunk, history = []) {
+    const token = localStorage.getItem("token");
+    const response = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json","Authorization": `Bearer ${token}`},
+        body: JSON.stringify({ message: input, history })
+    });
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.body) throw new Error("The server returned no response stream.");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let eventData = [];
+    let transcript = "";
+    let finalText = "";
+    let errorText = "";
+    let done = false;
+
+    const processLine = (line) => {
+        const normalizedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
+        if (!normalizedLine) {
+            if (eventData.length === 0) return;
+
+            const text = eventData.join("\n");
+            eventData = [];
+            if (text === "[DONE]") {
+                done = true;
+                return;
+            }
+
+            if (text.startsWith("[Error] ")) {
+                errorText = text.slice("[Error] ".length);
+                return;
+            }
+
+            transcript += `\n${text}`;
+            if (text.startsWith("[Final] ")) {
+                finalText = text.slice("[Final] ".length);
+            }
+            onchunk?.(transcript, finalText);
+            return;
+        }
+
+        if (normalizedLine.startsWith("data:")) {
+            eventData.push(normalizedLine.slice(5).replace(/^ /, ""));
+        }
+    };
+
     try {
-        const token = localStorage.getItem("token");
-        const response = await fetch("http://localhost:8000/chat", {
-            method: "POST",
-            headers: {"Content-Type": "application/json","Authorization": `Bearer ${token}`},
-            body: JSON.stringify({ message: input, history })
-        });
+        while (!done) {
+            const { done: streamDone, value } = await reader.read();
+            buffer += decoder.decode(value, { stream: !streamDone });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let result = "";
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+                processLine(line);
+                if (done) break;
+            }
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            const lines = chunk.split("\n");
-            for (let line of lines) {
-                if (line.startsWith("data: ")) {
-                    const text = line.replace("data: ", "");
-                    if (text === "[DONE]") {
-                        result += "\n[DONE]";
-                        break;
-                    }
-                    if (
-                        text.startsWith("[Router]") ||
-                        text.startsWith("[Researcher]") ||
-                        text.startsWith("[Writer]") ||
-                        text.startsWith("[Maths]") ||
-                        text.startsWith("[Merger]") ||
-                        text.startsWith("[Final]")
-                    ) {
-                        result += "\n" + text + "\n";
-                    } else {
-                        result += text;
-                    }
-                    if (onchunk) onchunk(result);
-                }
+            if (streamDone) {
+                if (buffer) processLine(buffer);
+                processLine("");
+                break;
             }
         }
-        return result;
-    } catch (error) {
-        console.error(error);
-        return null;
+    } finally {
+        reader.releaseLock();
     }
+
+    if (errorText) throw new Error(errorText);
+    if (!finalText.trim()) throw new Error("The server stream ended without a final answer.");
+    return finalText;
 }
 
 export default base;

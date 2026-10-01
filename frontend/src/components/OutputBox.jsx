@@ -30,8 +30,8 @@ function OutputBox({ output,onSend,loading }) {
   const estTokens = Math.round(charCount / 4);
 
   return (
-    <div className="bg-slate-900 rounded-[20px] w-full min-h-[525px] h-full flex flex-col overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-zinc-700">
+    <div className="bg-slate-900 rounded-[20px] w-full h-[65vh] max-h-[525px] min-h-0 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-zinc-700">
         <p className="text-zinc-100 leading-8 text-[14px] whitespace-pre-wrap"><span className="text-[14px] text-blue-400 uppercase tracking-widest font-medium mb-2">CB-X : </span>{output || MESSAGES[msgIndex]}</p>
       </div>
       <div className="flex items-center w-full justify-between px-4 py-2.5 border-b border-zinc-800 shrink-0">

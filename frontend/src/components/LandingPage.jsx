@@ -1,20 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { fetchConfiguredModels } from "../api/models";
 const thoughts = [
   { label: "Router", text: "Deciding which specialists to call...", color: "text-cyan-400" },
   { label: "Router", text: "Calling ['Researcher']", color: "text-cyan-400" },
   { label: "Researcher", text: "Analyzing query context and compiling answer...", color: "text-green-400" },
   { label: "Merger", text: "Merging outputs...", color: "text-yellow-400" },
   { label: "Final", text: "Response ready. [DONE]", color: "text-cyan-300" },
-];
-
-const models = [
-  { role: "Router", model: "llama3.1:8b" },
-  { role: "Research", model: "qwen2.5:3b" },
-  { role: "Writer", model: "phi4-mini:latest" },
-  { role: "Coder", model: "qwen2.5-coder:7b" },
-  { role: "Maths", model: "llama3.1:8b" },
-  { role: "Merger", model: "phi4-mini:latest" },
 ];
 
 function ThoughtStream() {
@@ -48,6 +40,18 @@ function ThoughtStream() {
 
 export default function CBXLanding() {
   const navigate = useNavigate();
+  const [models, setModels] = useState([]);
+  const [modelsLoadError, setModelsLoadError] = useState("");
+
+  useEffect(() => {
+    fetchConfiguredModels()
+      .then(setModels)
+      .catch((error) => {
+        console.error("Failed to load configured models:", error);
+        setModelsLoadError("Unable to load configured models.");
+      });
+  }, []);
+
   return (
     <div className="h-screen bg-[#0a0f18] text-white font-sans pt-14 h-screen overflow-y-auto scrollbar-thin scrollbar-thumb-cyan-400">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
@@ -133,11 +137,13 @@ export default function CBXLanding() {
         <p className="text-xs tracking-widest text-[#4a9eff] uppercase mb-3 text-center">Under the hood</p>
         <h2 className="text-3xl font-bold text-center mb-8">The specialist lineup</h2>
         <div className="bg-[#0d1117] border border-[#1e2d3d] rounded-2xl overflow-hidden">
-          {models.map((m, i) => (
+          {modelsLoadError ? (
+            <p className="px-6 py-4 text-sm text-red-400">{modelsLoadError}</p>
+          ) : models.map((m, i) => (
             <div key={m.role} className={`flex items-center justify-between px-6 py-4 text-sm ${i < models.length - 1 ? "border-b border-[#1e2d3d]" : ""} hover:bg-[#131c2b] transition-colors`} >
               <span className="text-white font-medium">{m.role}</span>
               <div className="flex items-center gap-2 text-gray-400 font-mono text-xs">
-                {m.model}
+                {m.model || "Not configured"}
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block"></span>
               </div>
             </div>
