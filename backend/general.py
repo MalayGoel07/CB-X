@@ -55,12 +55,16 @@ class BaseWorker:
         task: str,
         history: Optional[List[Message]] = None,
         images: Optional[List[bytes]] = None,
+        system_prompt_suffix: Optional[str] = None,
     ) -> str:
         if not self.model:
             raise ValueError(f"{self.name}: no model configured (check A1-A4 in .env)")
 
+        system_prompt = self.system_prompt
+        if system_prompt_suffix and system_prompt_suffix.strip():
+            system_prompt = f"{system_prompt.rstrip()}\n\n{system_prompt_suffix.strip()}"
         messages = (
-            [{"role": "system", "content": self.system_prompt}]
+            [{"role": "system", "content": system_prompt}]
             + [m.model_dump(exclude={"attachments"}) for m in (history or [])]
             + [{"role": "user", "content": task, **({"images": images} if images else {})}]
         )
@@ -218,6 +222,7 @@ async def orchestrate(
     history: List[Message],
     images: Optional[List[bytes]] = None,
     file_context: Optional[str] = None,
+    system_prompt: Optional[str] = None,
 ):
     try:
         if file_context:
@@ -230,7 +235,11 @@ async def orchestrate(
             message = f"{message}\n\nImage analysis:\n{image_analysis}"
 
         yield sse_event("[Router] : Deciding which specialists to call...")
-        route_raw = await router_worker.run(message, history)
+        route_raw = await router_worker.run(
+            message,
+            history,
+            system_prompt_suffix=system_prompt,
+        )
         try:
             needed = list(dict.fromkeys(w for w in parse_router_output(route_raw) if w in WORKER_MAP))
             if not needed:

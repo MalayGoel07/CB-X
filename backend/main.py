@@ -100,6 +100,7 @@ class ProfileUpdate(BaseModel):
     full_name: str | None = None
     nickname: str | None = None
     instructions: str | None = None
+    system_prompt: str | None = None
 
 @app.put("/me")
 async def update_me(
@@ -112,7 +113,8 @@ async def update_me(
             "$set": {
                 "full_name": data.full_name,
                 "nickname": data.nickname,
-                "instructions": data.instructions
+                "instructions": data.instructions,
+                "system_prompt": data.system_prompt,
             }
         }
     )
@@ -128,10 +130,12 @@ async def get_me(
     )
 
     return {
-        "username": user.get("full_name", user["username"]),
+        "username": user["username"],
+        "full_name": user.get("full_name", ""),
         "email": user.get("email", ""),
         "nickname": user.get("nickname", ""),
-        "instructions": user.get("instructions", "")
+        "instructions": user.get("instructions", ""),
+        "system_prompt": user.get("system_prompt", ""),
     }
 
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
@@ -180,7 +184,13 @@ async def chat(
     file_context = "\n\n".join(document_parts) or None
     prompt = message.strip() or "Analyze the attached file(s)."
     return StreamingResponse(
-        orchestrate(prompt, history_messages, image_data or None, file_context),
+        orchestrate(
+            prompt,
+            history_messages,
+            image_data or None,
+            file_context,
+            current_user.system_prompt,
+        ),
         media_type="text/event-stream",
     )
 

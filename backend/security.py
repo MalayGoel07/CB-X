@@ -27,6 +27,7 @@ class User(BaseModel):
     email: str | None = None
     full_name: str | None = None
     disabled: bool | None = None
+    system_prompt: str | None = None
 
 class UserInDB(User):
     hashed_password: str

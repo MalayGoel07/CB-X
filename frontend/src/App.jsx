@@ -265,7 +265,7 @@ function App() {
   const chatActionsDisabled = loading || !chatsReady;
 
   return (
-    <div className="h-screen overflow-hidden bg-[#0a0f18] text-white flex">
+    <div className="h-screen overflow-hidden bg-[#0a0f18] text-white flex overscroll-none">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="strip absolute w-full h-px top-[20%]" style={{ animationDuration: '2.8s' }}></div>
         <div className="strip absolute w-full h-[3px] top-[20%] blur-sm opacity-50" style={{ animationDuration: '2.8s' }}></div>
@@ -285,8 +285,8 @@ function App() {
         />
       )}
       {showModels && (<ModelsPanel onClose={() => setShowModels(false)} />)}
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-5 gap-4 z-50">
-          <TopBar onProfile={openProfile} onSettings={openSettings}/>
+      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-5 gap-4 z-50 overscroll-none">
+          <TopBar />
           <div className="flex flex-row gap-4 w-[1000px] min-h-0 item-center justify-center">
             <OutputBox
               output={output}
@@ -299,7 +299,14 @@ function App() {
               pendingPrompt={pendingPrompt}
               pendingAttachments={pendingAttachments}
             />
-            <ActionBar onHistory={openHistory} onModels={openModels} onNewChat={onNewChat} loading={chatActionsDisabled}/>
+            <ActionBar
+              onHistory={openHistory}
+              onModels={openModels}
+              onNewChat={onNewChat}
+              onProfile={openProfile}
+              onSettings={openSettings}
+              loading={chatActionsDisabled}
+            />
           </div>
           {loading && (
             <div className="w-[1000px] flex justify-start">
