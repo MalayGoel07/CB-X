@@ -13,16 +13,19 @@ from general import (
     M_WRITER,
     Message,
     orchestrate,
+    read_file_content,
 )
 import uvicorn
 from db import users_collection
 from security import Token, UserSignup, authenticate_user, create_access_token, get_password_hash,get_current_active_user,User
 from datetime import timedelta
 from typing import Annotated
-from fastapi import Depends, HTTPException
+from fastapi import Depends, File, Form, HTTPException, UploadFile
 from dotenv import load_dotenv
 import os
 from uuid import uuid4
+import json
+from pydantic import ValidationError
 
 load_dotenv()
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
@@ -131,9 +134,55 @@ async def get_me(
         "instructions": user.get("instructions", "")
     }
 
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+MAX_ATTACHMENT_COUNT = 5
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+DOCUMENT_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".py", ".js", ".json", ".csv", ".html", ".css"}
+MAX_DOCUMENT_CHARS = 50000
+
 @app.post("/chat")
-async def chat(req: ChatRequest, current_user: Annotated[User, Depends(get_current_active_user)]):
-    return StreamingResponse(orchestrate(req.message, req.history), media_type="text/event-stream")
+async def chat(
+    message: str = Form(...),
+    history: str = Form("[]"),
+    files: List[UploadFile] = File(default=[]),
+    current_user: User = Depends(get_current_active_user),
+):
+    if not message.strip() and not files:
+        raise HTTPException(status_code=422, detail="Enter a message or attach a file.")
+    if len(files) > MAX_ATTACHMENT_COUNT:
+        raise HTTPException(status_code=413, detail=f"Attach no more than {MAX_ATTACHMENT_COUNT} files.")
+    try:
+        history_data = json.loads(history)
+        history_messages = [Message.model_validate(item) for item in history_data]
+    except (json.JSONDecodeError, TypeError, ValidationError) as error:
+        raise HTTPException(status_code=400, detail="Invalid chat history.") from error
+
+    image_data = []
+    document_parts = []
+    for upload in files:
+        filename = upload.filename or "attachment"
+        extension = os.path.splitext(filename)[1].lower()
+        if extension not in IMAGE_EXTENSIONS | DOCUMENT_EXTENSIONS:
+            raise HTTPException(status_code=415, detail=f"Unsupported file type: {filename}")
+        content = await upload.read(MAX_ATTACHMENT_SIZE + 1)
+        if len(content) > MAX_ATTACHMENT_SIZE:
+            raise HTTPException(status_code=413, detail=f"{filename} exceeds the 10 MB file limit.")
+        if extension in IMAGE_EXTENSIONS:
+            image_data.append(content)
+        else:
+            try:
+                extracted = read_file_content(filename, content)
+            except (UnicodeDecodeError, ValueError) as error:
+                raise HTTPException(status_code=422, detail=f"Could not read {filename}: {error}") from error
+            remaining_chars = max(MAX_DOCUMENT_CHARS - sum(len(part) for part in document_parts), 0)
+            document_parts.append(f"--- {filename} ---\n{extracted[:remaining_chars]}")
+
+    file_context = "\n\n".join(document_parts) or None
+    prompt = message.strip() or "Analyze the attached file(s)."
+    return StreamingResponse(
+        orchestrate(prompt, history_messages, image_data or None, file_context),
+        media_type="text/event-stream",
+    )
 
 @app.get("/history")
 async def get_history(current_user: Annotated[User, Depends(get_current_active_user)]):

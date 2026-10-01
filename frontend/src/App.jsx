@@ -14,6 +14,9 @@ function App() {
   const [input,setInput]=useState("");
   const [output,setOutput]=useState("");
   const [pendingPrompt,setPendingPrompt]=useState("");
+  const [attachments,setAttachments]=useState([]);
+  const [pendingAttachments,setPendingAttachments]=useState([]);
+  const [attachmentError,setAttachmentError]=useState("");
   const [loading,setLoading]=useState(false);
   const [elapsedMs,setElapsedMs]=useState(0);
   const requestStartedAt = useRef(null);
@@ -34,9 +37,15 @@ function App() {
   const history = activeChat?.messages ?? [];
 
   const send = async () => {
-    if (!input.trim())
+    if (!input.trim() && attachments.length === 0)
       return;
-    const prompt = input.trim();
+    const prompt = input.trim() || (
+      attachments.some((file) => file.type.startsWith("image/"))
+        ? "Analyze the attached image(s)."
+        : "Review the attached file(s)."
+    );
+    const sentAttachments = attachments;
+    const attachmentMetadata = sentAttachments.map(({ name, type }) => ({ name, type }));
     let chat = activeChat;
     if (!chat) {
       chat = { id: crypto.randomUUID(), title: "New chat", messages: [] };
@@ -47,22 +56,26 @@ function App() {
     setElapsedMs(0);
     setLoading(true);
     setPendingPrompt(prompt);
+    setPendingAttachments(attachmentMetadata);
     setOutput("");
     setThought("");
     setShowThoughts(false);
+    setShowConversation(true);
     try {
       const finalText = await base(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
-      }, history);
+      }, history, sentAttachments);
       setOutput(finalText);
+      setAttachments([]);
+      setAttachmentError("");
       setChats((prev) => {
         const updatedChat = {
           ...chat,
           title: chat.messages.length === 0 ? prompt.slice(0, 60) : chat.title,
           messages: [
             ...chat.messages,
-            { role: "user", content: prompt },
+            { role: "user", content: prompt, attachments: attachmentMetadata },
             { role: "assistant", content: finalText },
           ],
         };
@@ -79,6 +92,7 @@ function App() {
         requestStartedAt.current = null;
       }
       setPendingPrompt("");
+      setPendingAttachments([]);
       setShowThoughts(false);
       setLoading(false);
     }
@@ -283,6 +297,7 @@ function App() {
               conversationTitle={activeChat?.title}
               onBackToChats={backToChats}
               pendingPrompt={pendingPrompt}
+              pendingAttachments={pendingAttachments}
             />
             <ActionBar onHistory={openHistory} onModels={openModels} onNewChat={onNewChat} loading={chatActionsDisabled}/>
           </div>
@@ -297,7 +312,16 @@ function App() {
               </button>
             </div>
           )}
-          <InputBar input={input} onChange={setInput} onSend={send} loading={loading}/>
+          <InputBar
+            input={input}
+            onChange={setInput}
+            onSend={send}
+            loading={loading}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            attachmentError={attachmentError}
+            onAttachmentError={setAttachmentError}
+          />
       </div>
       {showThoughts && loading && (<ThoughtsModal thought={thought} onClose={() => setShowThoughts(false)} />)}
       {showProfile && (<ProfilePanel onClose={() => setShowProfile(false)} />)}

@@ -18,6 +18,7 @@ function OutputBox({
   conversationTitle,
   onBackToChats,
   pendingPrompt,
+  pendingAttachments = [],
 }) {
   const [copied, setCopied] = useState(false);
   const [msgIndex, setMsgIndex] = useState(() => Math.floor(Math.random()*MESSAGES.length));
@@ -77,12 +78,38 @@ function OutputBox({
                   {message.role === "user" ? "You" : "CB-X"}
                 </p>
                 <p className="text-zinc-100 text-sm leading-7 whitespace-pre-wrap">{message.content}</p>
+                {message.attachments?.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {message.attachments.map((attachment, attachmentIndex) => (
+                      <span
+                        key={`${attachment.name}-${attachmentIndex}`}
+                        className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-zinc-300"
+                      >
+                        {attachment.type?.startsWith("image/") ? "🖼 " : "📎 "}
+                        {attachment.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {pendingPrompt && (
               <div className="rounded-xl px-4 py-3 bg-cyan-500/10">
                 <p className="text-xs font-semibold mb-2 text-cyan-400">You</p>
                 <p className="text-zinc-100 text-sm leading-7 whitespace-pre-wrap">{pendingPrompt}</p>
+                {pendingAttachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {pendingAttachments.map((attachment, index) => (
+                      <span
+                        key={`${attachment.name}-${index}`}
+                        className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-zinc-300"
+                      >
+                        {attachment.type?.startsWith("image/") ? "🖼 " : "📎 "}
+                        {attachment.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {output && (loading || lastConversationMessage?.content !== output) && (

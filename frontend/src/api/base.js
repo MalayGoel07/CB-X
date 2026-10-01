@@ -1,9 +1,13 @@
-async function base(input, onchunk, history = []) {
+async function base(input, onchunk, history = [], attachments = []) {
     const token = localStorage.getItem("token");
+    const body = new FormData();
+    body.append("message", input);
+    body.append("history", JSON.stringify(history));
+    attachments.forEach((file) => body.append("files", file));
     const response = await fetch("http://localhost:8000/chat", {
         method: "POST",
-        headers: {"Content-Type": "application/json","Authorization": `Bearer ${token}`},
-        body: JSON.stringify({ message: input, history })
+        headers: {"Authorization": `Bearer ${token}`},
+        body
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);

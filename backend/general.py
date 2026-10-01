@@ -1,11 +1,15 @@
 from dotenv import load_dotenv
 from ollama import AsyncClient, ResponseError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 import asyncio
 import json
 import re
 import os
+from pathlib import Path
+from pypdf import PdfReader
+from docx import Document
+from io import BytesIO
 
 load_dotenv()
 
@@ -15,6 +19,7 @@ M_WRITER = os.getenv("A3")
 M_CODER = os.getenv("A4")
 M_MATH = os.getenv("A5")
 M_MERGER = os.getenv("A3")
+M_IMAGE = os.getenv("A6", M_RESEARCH)
 
 client = AsyncClient(host="http://127.0.0.1:11434")
 ollama_semaphore = asyncio.Semaphore(2)
@@ -23,6 +28,7 @@ ollama_semaphore = asyncio.Semaphore(2)
 class Message(BaseModel):
     role: Literal["system", "user", "assistant"]
     content: str
+    attachments: List[dict[str, str]] = Field(default_factory=list)
 
 
 class BaseWorker:
@@ -44,14 +50,19 @@ class BaseWorker:
         self.keep_alive = keep_alive
         self.think = think
 
-    async def run(self, task: str, history: Optional[List[Message]] = None) -> str:
+    async def run(
+        self,
+        task: str,
+        history: Optional[List[Message]] = None,
+        images: Optional[List[bytes]] = None,
+    ) -> str:
         if not self.model:
             raise ValueError(f"{self.name}: no model configured (check A1-A4 in .env)")
 
         messages = (
             [{"role": "system", "content": self.system_prompt}]
-            + [m.model_dump() for m in (history or [])]
-            + [{"role": "user", "content": task}]
+            + [m.model_dump(exclude={"attachments"}) for m in (history or [])]
+            + [{"role": "user", "content": task, **({"images": images} if images else {})}]
         )
         async with ollama_semaphore:
             response = await client.chat(
@@ -94,15 +105,92 @@ writer_worker = BaseWorker("Writer", "You are a skilled writer. Produce clear, w
 coder_worker = BaseWorker("Coder", "You are an expert programmer. Write clean, correct, non-commented code, Answer clearly. Finish every sentence.", M_CODER, 1024, 0.3)
 math_worker = BaseWorker("Maths", "You are an expert Maths Expert. Solve properly, cleanly and carefully. Reply only with proper answer structure, no extra wording ,Answer clearly in under 250 words. Finish every sentence.", M_MATH, 512, 0.1)
 synth_worker = BaseWorker("Merger", "Merge specialist outputs into ONE clean, concise final answer. No headers. No repeated content. Plain prose only, Answer clearly in under 250 words. Finish every sentence.", M_MERGER, 1024, 0.5)
+image_worker = BaseWorker(
+    "ImageRed",
+    """You are an expert multimodal image understanding assistant.
+    Analyze the ENTIRE image, not just its main content.
 
-# Specialists only: the Merger is not routable.
+    For screenshots containing code:
+    1. Identify the title and topic.
+    2. Transcribe the complete code accurately.
+    3. Preserve indentation, comments, variable names and syntax.
+    4. Explain what the code does.
+    5. Describe the output shown in the image.
+    6. Mention important visual details, labels and annotations.
+
+    For other images, describe the objects, text, layout,
+    relationships and relevant details.
+
+    Never silently omit visible information.
+    Clearly distinguish extracted text from your own explanation.""",
+    M_IMAGE, 1024, 0.2
+)
 WORKER_MAP = {
     "Researcher": research_worker,
     "Writer": writer_worker,
     "Coder": coder_worker,
     "Maths": math_worker,
+    "ImageRed": image_worker
 }
+async def read_image(
+    image_path: str,
+    question: str = "Describe the entire image. Extract all visible text accurately, preserve code formatting, identify the title, explain the content, and report any displayed output."
+) -> str:
+    if not Path(image_path).is_file():
+        raise FileNotFoundError(image_path)
 
+    async with ollama_semaphore:
+        response = await client.chat(
+            model=M_IMAGE,
+            messages=[{
+                "role": "user",
+                "content": question,
+                "images": [image_path]
+            }],
+            options={"temperature": 0.1, "num_predict": 1536},
+            keep_alive="2m"
+        )
+
+    return response.message.content or ""
+
+async def read_file(file_path: str) -> str:
+    path = Path(file_path)
+
+    if not path.is_file():
+        raise FileNotFoundError(file_path)
+
+    ext = path.suffix.lower()
+
+    if ext == ".pdf":
+        return "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(path).pages
+        )
+
+    if ext == ".docx":
+        return "\n".join(
+            paragraph.text for paragraph in Document(path).paragraphs
+        )
+
+    if ext in {".txt", ".md", ".py", ".js", ".json", ".csv", ".html", ".css"}:
+        return path.read_text(encoding="utf-8")
+
+    raise ValueError(f"Unsupported file type: {ext}")
+
+
+def read_file_content(filename: str, content: bytes) -> str:
+    ext = Path(filename).suffix.lower()
+
+    if ext == ".pdf":
+        return "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(content)).pages)
+
+    if ext == ".docx":
+        return "\n".join(paragraph.text for paragraph in Document(BytesIO(content)).paragraphs)
+
+    if ext in {".txt", ".md", ".py", ".js", ".json", ".csv", ".html", ".css"}:
+        return content.decode("utf-8")
+
+    raise ValueError(f"Unsupported file type: {ext}")
 
 def sse_event(data: str) -> str:
     normalized = data.replace("\r\n", "\n").replace("\r", "\n")
@@ -125,8 +213,22 @@ def parse_router_output(raw: str) -> list:
 MERGEABLE = {"Researcher", "Writer"}
 
 
-async def orchestrate(message: str, history: List[Message]):
+async def orchestrate(
+    message: str,
+    history: List[Message],
+    images: Optional[List[bytes]] = None,
+    file_context: Optional[str] = None,
+):
     try:
+        if file_context:
+            message = f"{message}\n\nAttached file contents:\n{file_context}"
+
+        if images:
+            yield sse_event("[ImageRed] Analyzing attached image(s)...")
+            image_analysis = await image_worker.run(message, history, images)
+            yield sse_event(f"[ImageRed] {image_analysis}")
+            message = f"{message}\n\nImage analysis:\n{image_analysis}"
+
         yield sse_event("[Router] : Deciding which specialists to call...")
         route_raw = await router_worker.run(message, history)
         try:
