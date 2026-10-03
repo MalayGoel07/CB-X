@@ -242,7 +242,7 @@ async def save_chats(
 ):
     users_collection.update_one(
         {"username": current_user.username},
-        {"$set": {"chats": [chat.model_dump() for chat in data.chats]}},
+        {"$set": {"chats": [chat.model_dump(exclude_none=True) for chat in data.chats]}},
     )
     return {"message": "Chats saved"}
 

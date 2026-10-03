@@ -19,6 +19,7 @@ async function base(input, onchunk, history = [], attachments = []) {
     let eventData = [];
     let transcript = "";
     let finalText = "";
+    let tokenCount = null;
     let errorText = "";
     let done = false;
 
@@ -36,6 +37,24 @@ async function base(input, onchunk, history = [], attachments = []) {
 
             if (text.startsWith("[Error] ")) {
                 errorText = text.slice("[Error] ".length);
+                return;
+            }
+
+            if (text.startsWith("[Usage] ")) {
+                const parsedTokenCount = Number(text.slice("[Usage] ".length));
+                if (!Number.isSafeInteger(parsedTokenCount) || parsedTokenCount < 0) {
+                    errorText = "The server returned invalid token usage.";
+                    return;
+                }
+                tokenCount = parsedTokenCount;
+                return;
+            }
+
+            if (text.startsWith("[FinalChunk]")) {
+                const chunk = text.slice("[FinalChunk]".length);
+                finalText += chunk;
+                transcript += chunk;
+                onchunk?.(transcript, finalText);
                 return;
             }
 
@@ -76,7 +95,7 @@ async function base(input, onchunk, history = [], attachments = []) {
 
     if (errorText) throw new Error(errorText);
     if (!finalText.trim()) throw new Error("The server stream ended without a final answer.");
-    return finalText;
+    return { text: finalText, tokenCount };
 }
 
 export default base;

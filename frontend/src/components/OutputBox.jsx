@@ -11,6 +11,7 @@ const MESSAGES = [
 
 function OutputBox({
   output,
+  tokenCount,
   onSend,
   loading,
   elapsedMs,
@@ -42,7 +43,6 @@ function OutputBox({
 
   const wordCount = output ? output.trim().split(/\s+/).length : 0;
   const charCount = output ? output.length : 0;
-  const estTokens = Math.round(charCount / 4);
   const elapsedSeconds = (elapsedMs / 1000).toFixed(1);
   const lastConversationMessage = conversation?.[conversation.length - 1];
 
@@ -78,6 +78,11 @@ function OutputBox({
                   {message.role === "user" ? "You" : "CB-X"}
                 </p>
                 <p className="text-zinc-100 text-sm leading-7 whitespace-pre-wrap">{message.content}</p>
+                {message.role === "assistant" && Number.isSafeInteger(message.token_count) && (
+                  <span className="mt-2 block text-[11px] font-mono text-zinc-500">
+                    {Math.round(message.token_count)} tokens
+                  </span>
+                )}
                 {message.attachments?.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-3">
                     {message.attachments.map((attachment, attachmentIndex) => (
@@ -153,7 +158,9 @@ function OutputBox({
           <span className="text-[11px] font-mono text-zinc-500">{wordCount} words</span>
           <div className="flex items-center gap-6">
             <span className="text-[11px] font-mono text-zinc-500">{charCount} chars</span>
-            <span className="text-[11px] font-mono text-zinc-500">{estTokens} tokens</span>
+            <span className="text-[11px] font-mono text-zinc-500">
+              {Number.isSafeInteger(tokenCount) ? `${Math.round(tokenCount)} tokens` : "0 tokens"}
+            </span>
             <span className="text-[11px] font-mono text-zinc-500">{elapsedSeconds}s</span>
           </div>
         </div>

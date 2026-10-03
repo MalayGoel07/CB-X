@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 from ollama import AsyncClient, ResponseError
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import AsyncIterator, List, Literal, Optional
 import asyncio
 import json
 import re
@@ -29,6 +29,7 @@ class Message(BaseModel):
     role: Literal["system", "user", "assistant"]
     content: str
     attachments: List[dict[str, str]] = Field(default_factory=list)
+    token_count: Optional[int] = None
 
 
 class BaseWorker:
@@ -50,24 +51,33 @@ class BaseWorker:
         self.keep_alive = keep_alive
         self.think = think
 
+    def _build_messages(
+        self,
+        task: str,
+        history: Optional[List[Message]],
+        images: Optional[List[bytes]],
+        system_prompt_suffix: Optional[str],
+    ) -> list[dict]:
+        system_prompt = self.system_prompt
+        if system_prompt_suffix and system_prompt_suffix.strip():
+            system_prompt = f"{system_prompt.rstrip()}\n\n{system_prompt_suffix.strip()}"
+        return (
+            [{"role": "system", "content": system_prompt}]
+            + [m.model_dump(exclude={"attachments", "token_count"}) for m in (history or [])]
+            + [{"role": "user", "content": task, **({"images": images} if images else {})}]
+        )
+
     async def run(
         self,
         task: str,
         history: Optional[List[Message]] = None,
         images: Optional[List[bytes]] = None,
         system_prompt_suffix: Optional[str] = None,
-    ) -> str:
+    ) -> tuple[str, Optional[int]]:
         if not self.model:
             raise ValueError(f"{self.name}: no model configured (check A1-A4 in .env)")
 
-        system_prompt = self.system_prompt
-        if system_prompt_suffix and system_prompt_suffix.strip():
-            system_prompt = f"{system_prompt.rstrip()}\n\n{system_prompt_suffix.strip()}"
-        messages = (
-            [{"role": "system", "content": system_prompt}]
-            + [m.model_dump(exclude={"attachments"}) for m in (history or [])]
-            + [{"role": "user", "content": task, **({"images": images} if images else {})}]
-        )
+        messages = self._build_messages(task, history, images, system_prompt_suffix)
         async with ollama_semaphore:
             response = await client.chat(
                 model=self.model,
@@ -76,8 +86,35 @@ class BaseWorker:
                 keep_alive=self.keep_alive,
                 think=self.think,
             )
-        message = response.get("message") or {}
-        return message.get("content") or message.get("thinking") or ""
+        message = response.message
+        return (
+            message.content or message.thinking or "",
+            response.eval_count,
+        )
+
+    async def stream(
+        self,
+        task: str,
+        history: Optional[List[Message]] = None,
+        images: Optional[List[bytes]] = None,
+        system_prompt_suffix: Optional[str] = None,
+    ) -> AsyncIterator[tuple[str, Optional[int]]]:
+        if not self.model:
+            raise ValueError(f"{self.name}: no model configured (check A1-A4 in .env)")
+
+        messages = self._build_messages(task, history, images, system_prompt_suffix)
+        async with ollama_semaphore:
+            response_stream = await client.chat(
+                model=self.model,
+                messages=messages,
+                options={"temperature": self.temperature, "num_predict": self.num_predict},
+                keep_alive=self.keep_alive,
+                think=self.think,
+                stream=True,
+            )
+            async for response in response_stream:
+                message = response.message
+                yield message.content or message.thinking or "", response.eval_count
 
 
 router_worker = BaseWorker(
@@ -230,12 +267,12 @@ async def orchestrate(
 
         if images:
             yield sse_event("[ImageRed] Analyzing attached image(s)...")
-            image_analysis = await image_worker.run(message, history, images)
+            image_analysis, _ = await image_worker.run(message, history, images)
             yield sse_event(f"[ImageRed] {image_analysis}")
             message = f"{message}\n\nImage analysis:\n{image_analysis}"
 
         yield sse_event("[Router] : Deciding which specialists to call...")
-        route_raw = await router_worker.run(
+        route_raw, _ = await router_worker.run(
             message,
             history,
             system_prompt_suffix=system_prompt,
@@ -248,23 +285,51 @@ async def orchestrate(
             needed = ["Researcher"]
 
         yield sse_event(f"[Router] : Calling {needed}")
-        results = await asyncio.gather(*[WORKER_MAP[w].run(message, history) for w in needed])
-
-        worker_outputs = ""
-        for name, output in zip(needed, results):
-            yield sse_event(f"[{name}] {output}")
-            worker_outputs += f"### {name}:\n{output}\n\n"
-
         if len(needed) == 1:
-            final = results[0]
+            worker = WORKER_MAP[needed[0]]
+            yield sse_event(f"[{needed[0]}] Generating final answer...")
+            final_token_count = None
+            async for chunk, token_count in worker.stream(message, history):
+                if chunk:
+                    yield sse_event(f"[FinalChunk]{chunk}")
+                if token_count is not None:
+                    final_token_count = token_count
         elif set(needed) <= MERGEABLE:
+            results = await asyncio.gather(*[WORKER_MAP[w].run(message, history) for w in needed])
+            worker_outputs = ""
+            for name, (output, _) in zip(needed, results):
+                yield sse_event(f"[{name}] {output}")
+                worker_outputs += f"### {name}:\n{output}\n\n"
+
             yield sse_event("[Merger] : Merging outputs...")
             synth_input = f"User asked: {message}\n\nSpecialist outputs:\n{worker_outputs}"
-            final = await synth_worker.run(synth_input)
+            final_token_count = None
+            async for chunk, token_count in synth_worker.stream(synth_input):
+                if chunk:
+                    yield sse_event(f"[FinalChunk]{chunk}")
+                if token_count is not None:
+                    final_token_count = token_count
         else:
-            final = "\n\n".join(results)
+            result_token_counts = []
+            for index, name in enumerate(needed):
+                if index:
+                    yield sse_event("[FinalChunk]\n\n")
+                yield sse_event(f"[{name}] Generating response...")
+                result_token_count = None
+                async for chunk, token_count in WORKER_MAP[name].stream(message, history):
+                    if chunk:
+                        yield sse_event(f"[FinalChunk]{chunk}")
+                    if token_count is not None:
+                        result_token_count = token_count
+                result_token_counts.append(result_token_count)
+            final_token_count = (
+                sum(count for count in result_token_counts if count is not None)
+                if all(count is not None for count in result_token_counts)
+                else None
+            )
 
-        yield sse_event(f"[Final] {final}")
+        if final_token_count is not None:
+            yield sse_event(f"[Usage] {final_token_count}")
     except ConnectionError:
         yield sse_event("[Error] Can't reach Ollama. Start it (`ollama serve`) and try again.")
     except ResponseError as e:

@@ -13,6 +13,7 @@ import SettingPanel from "./components/SettingPanel";
 function App() {
   const [input,setInput]=useState("");
   const [output,setOutput]=useState("");
+  const [outputTokenCount,setOutputTokenCount]=useState(null);
   const [pendingPrompt,setPendingPrompt]=useState("");
   const [attachments,setAttachments]=useState([]);
   const [pendingAttachments,setPendingAttachments]=useState([]);
@@ -58,15 +59,17 @@ function App() {
     setPendingPrompt(prompt);
     setPendingAttachments(attachmentMetadata);
     setOutput("");
+    setOutputTokenCount(null);
     setThought("");
     setShowThoughts(false);
     setShowConversation(true);
     try {
-      const finalText = await base(prompt, (transcript, streamedFinal) => {
+      const { text: finalText, tokenCount } = await base(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
       }, history, sentAttachments);
       setOutput(finalText);
+      setOutputTokenCount(tokenCount);
       setAttachments([]);
       setAttachmentError("");
       setChats((prev) => {
@@ -76,7 +79,7 @@ function App() {
           messages: [
             ...chat.messages,
             { role: "user", content: prompt, attachments: attachmentMetadata },
-            { role: "assistant", content: finalText },
+            { role: "assistant", content: finalText, token_count: tokenCount },
           ],
         };
         return prev.some((item) => item.id === chat.id)
@@ -133,6 +136,7 @@ function App() {
             .reverse()
             .find((message) => message.role === "assistant");
           setOutput(latestAssistantMessage?.content ?? "");
+          setOutputTokenCount(latestAssistantMessage?.token_count ?? null);
         }
       })
       .catch((error) => {
@@ -172,6 +176,7 @@ function App() {
     setActiveChatId(null);
     setInput("");
     setOutput("");
+    setOutputTokenCount(null);
     setThought("");
     if (!token) return;
     try {
@@ -205,6 +210,7 @@ function App() {
       .reverse()
       .find((message) => message.role === "assistant");
     setOutput(latestAssistantMessage?.content ?? "");
+    setOutputTokenCount(latestAssistantMessage?.token_count ?? null);
   };
 
   const openSettings = ()=>{ setShowSettings(true); setShowProfile(false); setShowHistory(false); setShowModels(false); };
@@ -217,6 +223,7 @@ function App() {
     setShowConversation(false);
     setInput("");
     setOutput("");
+    setOutputTokenCount(null);
     setShowHistory(false);
     const emptyChat = [...chats].reverse().find((chat) => chat.messages.length === 0);
     if (emptyChat) {
@@ -255,6 +262,7 @@ function App() {
       .reverse()
       .find((message) => message.role === "assistant");
     setOutput(latestAssistantMessage?.content ?? "");
+    setOutputTokenCount(latestAssistantMessage?.token_count ?? null);
     setShowConversation(true);
     setShowHistory(false);
   };
@@ -290,6 +298,7 @@ function App() {
           <div className="flex flex-row gap-4 w-[1000px] min-h-0 item-center justify-center">
             <OutputBox
               output={output}
+              tokenCount={outputTokenCount}
               onSend={send}
               loading={loading}
               elapsedMs={elapsedMs}
