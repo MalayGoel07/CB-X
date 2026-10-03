@@ -1,8 +1,10 @@
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./index.css";
+import "./appearance.css";
 import AppRoutes from "./AppRoutes";
-
+import { initAppearance } from "./appearance";
+initAppearance();
 ReactDOM.createRoot(document.getElementById("root")).render(
   <BrowserRouter>
     <AppRoutes />

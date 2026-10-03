@@ -1,0 +1,45 @@
+/* Append to src/index.css, AFTER the @tailwind directives */
+
+/* ---------- Font size ----------
+   Tailwind sizes like text-sm / leading-7 use rem, so scaling <html> scales them.
+   Arbitrary px sizes (text-[14px] etc.) are scaled explicitly below. */
+:root { --fs-scale: 1; }
+html { font-size: calc(16px * var(--fs-scale)); }
+html .text-\[11px\] { font-size: calc(11px * var(--fs-scale)); }
+html .text-\[12px\] { font-size: calc(12px * var(--fs-scale)); }
+html .text-\[13px\] { font-size: calc(13px * var(--fs-scale)); }
+html .text-\[14px\] { font-size: calc(14px * var(--fs-scale)); }
+html .text-\[16px\] { font-size: calc(16px * var(--fs-scale)); }
+html .text-\[18px\] { font-size: calc(18px * var(--fs-scale)); }
+
+/* ---------- Light theme (app screens only) ----------
+   Dark is the default, so nothing changes unless <html data-theme="light">.
+   Everything is scoped to .app-root so the landing page is untouched. */
+html[data-theme="light"] .app-root { background-color: #f4f6fb; color: #0f172a; }
+html[data-theme="light"] .app-root .strip { display: none; }
+
+/* surfaces */
+html[data-theme="light"] .app-root .bg-slate-900 { background-color: #ffffff; }
+html[data-theme="light"] .app-root .bg-slate-950 { background-color: #eef2f8; }
+html[data-theme="light"] .app-root .bg-slate-800 { background-color: #e2e8f0; }
+html[data-theme="light"] .app-root .hover\:bg-slate-950:hover { background-color: #e6ecf6; }
+html[data-theme="light"] .app-root header.bg-\[\#0a0f18\] { background-color: #f4f6fb; }
+
+/* borders */
+html[data-theme="light"] .app-root :is(.border-zinc-800, .border-slate-900, .border-\[\#1a1d27\]) { border-color: #e2e8f0; }
+html[data-theme="light"] .app-root :is(.border-zinc-700, .border-zinc-700\/50) { border-color: #cbd5e1; }
+html[data-theme="light"] .app-root .border-zinc-500 { border-color: #94a3b8; }
+
+/* text */
+html[data-theme="light"] .app-root :is(.text-white, .text-zinc-100) { color: #0f172a; }
+html[data-theme="light"] .app-root :is(.text-zinc-200, .text-slate-200) { color: #1e293b; }
+html[data-theme="light"] .app-root .text-zinc-300 { color: #334155; }
+html[data-theme="light"] .app-root :is(.text-zinc-400, .text-zinc-500) { color: #64748b; }
+html[data-theme="light"] .app-root :is(.text-cyan-300, .text-cyan-400) { color: #0e7490; }
+html[data-theme="light"] .app-root :is(.text-blue-400, .text-blue-500) { color: #2563eb; }
+html[data-theme="light"] .app-root :is(.text-red-300, .text-red-400) { color: #dc2626; }
+html[data-theme="light"] .app-root .text-green-400 { color: #16a34a; }
+html[data-theme="light"] .app-root :is(.hover\:text-zinc-200, .hover\:text-cyan-200, .hover\:text-cyan-300):hover { color: #0e7490; }
+
+/* the gradient Send button keeps its own dark text */
+html[data-theme="light"] .app-root .text-black { color: #000; }

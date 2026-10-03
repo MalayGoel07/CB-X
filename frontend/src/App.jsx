@@ -10,6 +10,9 @@ import TopBar from "./components/TopBar";
 import ProfilePanel from "./components/ProfilePanel";
 import SettingPanel from "./components/SettingPanel";
 
+// Change this in one place when you deploy.
+const API = "http://localhost:8000";
+
 function App() {
   const [input,setInput]=useState("");
   const [output,setOutput]=useState("");
@@ -33,29 +36,31 @@ function App() {
   const [showModels,setShowModels]=useState(false);
   const [showProfile,setShowProfile]=useState(false);
   const [showSettings,setShowSettings]=useState(false);
+  // The last request, kept so Rethink can replay it (including the attached files).
+  const lastRequest = useRef(null);
+  // Messages shown in the chat while a request runs (hides the reply being replaced).
+  const [viewMessages,setViewMessages]=useState(null);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const history = activeChat?.messages ?? [];
 
-  const send = async () => {
-    if (!input.trim() && attachments.length === 0)
-      return;
-    const prompt = input.trim() || (
-      attachments.some((file) => file.type.startsWith("image/"))
-        ? "Analyze the attached image(s)."
-        : "Review the attached file(s)."
-    );
-    const sentAttachments = attachments;
+  // Runs one request. baseMessages is the history sent to the models and the
+  // history the new exchange is appended to, so Rethink can replace the last reply.
+  const submit = async (prompt, sentAttachments, baseMessages, { clearInput }) => {
+    if (loading) return;
     const attachmentMetadata = sentAttachments.map(({ name, type }) => ({ name, type }));
     let chat = activeChat;
     if (!chat) {
       chat = { id: crypto.randomUUID(), title: "New chat", messages: [] };
+      baseMessages = [];
       setChats((prev) => [...prev, chat]);
       setActiveChatId(chat.id);
     }
+    lastRequest.current = { prompt, files: sentAttachments, baseMessages, chatId: chat.id };
     requestStartedAt.current = performance.now();
     setElapsedMs(0);
     setLoading(true);
+    setViewMessages(baseMessages);
     setPendingPrompt(prompt);
     setPendingAttachments(attachmentMetadata);
     setOutput("");
@@ -67,17 +72,20 @@ function App() {
       const { text: finalText, tokenCount } = await base(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
-      }, history, sentAttachments);
+      }, baseMessages, sentAttachments);
       setOutput(finalText);
       setOutputTokenCount(tokenCount);
-      setAttachments([]);
+      if (clearInput) {
+        setInput("");
+        setAttachments([]);
+      }
       setAttachmentError("");
       setChats((prev) => {
         const updatedChat = {
           ...chat,
-          title: chat.messages.length === 0 ? prompt.slice(0, 60) : chat.title,
+          title: baseMessages.length === 0 ? prompt.slice(0, 60) : chat.title,
           messages: [
-            ...chat.messages,
+            ...baseMessages,
             { role: "user", content: prompt, attachments: attachmentMetadata },
             { role: "assistant", content: finalText, token_count: tokenCount },
           ],
@@ -94,11 +102,42 @@ function App() {
         setElapsedMs(performance.now() - requestStartedAt.current);
         requestStartedAt.current = null;
       }
+      setViewMessages(null);
       setPendingPrompt("");
       setPendingAttachments([]);
       setShowThoughts(false);
       setLoading(false);
     }
+  };
+
+  const send = () => {
+    if (!input.trim() && attachments.length === 0)
+      return;
+    const prompt = input.trim() || (
+      attachments.some((file) => file.type.startsWith("image/"))
+        ? "Analyze the attached image(s)."
+        : "Review the attached file(s)."
+    );
+    submit(prompt, attachments, history, { clearInput: true });
+  };
+
+  // Rethink: run the last request again and replace its reply (no duplicate turn).
+  const rethink = () => {
+    if (loading) return;
+    const last = lastRequest.current;
+    if (last && last.chatId === activeChatId) {
+      submit(last.prompt, last.files, last.baseMessages, { clearInput: false });
+      return;
+    }
+    // After a page reload there is no saved request, so rebuild it from the chat.
+    const lastReply = history[history.length - 1];
+    const lastPrompt = history[history.length - 2];
+    if (lastReply?.role !== "assistant" || lastPrompt?.role !== "user") return;
+    if (lastPrompt.attachments?.length > 0) {
+      setAttachmentError("That message had attachments, which aren't saved. Attach the files again and send.");
+      return;
+    }
+    submit(lastPrompt.content, [], history.slice(0, -2), { clearInput: false });
   };
 
   useEffect(() => {
@@ -114,7 +153,7 @@ function App() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) return;
-    fetch("http://localhost:8000/chats", {
+    fetch(`${API}/chats`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((response) => {
@@ -151,7 +190,7 @@ function App() {
       skipNextHistorySave.current = false;
       return;
     }
-    fetch("http://localhost:8000/chats", {
+    fetch(`${API}/chats`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -172,6 +211,7 @@ function App() {
   const clearChat = async () => {
     const token = localStorage.getItem("token");
     skipNextHistorySave.current = true;
+    lastRequest.current = null;
     setChats([]);
     setActiveChatId(null);
     setInput("");
@@ -180,7 +220,7 @@ function App() {
     setThought("");
     if (!token) return;
     try {
-      const response = await fetch("http://localhost:8000/chats", {
+      const response = await fetch(`${API}/chats`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -237,7 +277,7 @@ function App() {
     const token = localStorage.getItem("token");
     if (!token) return;
     try {
-      const response = await fetch("http://localhost:8000/chats", {
+      const response = await fetch(`${API}/chats`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -273,7 +313,7 @@ function App() {
   const chatActionsDisabled = loading || !chatsReady;
 
   return (
-    <div className="h-screen overflow-hidden bg-[#0a0f18] text-white flex overscroll-none">
+    <div className="app-root h-screen overflow-hidden bg-[#0a0f18] text-white flex overscroll-none">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className="strip absolute w-full h-px top-[20%]" style={{ animationDuration: '2.8s' }}></div>
         <div className="strip absolute w-full h-[3px] top-[20%] blur-sm opacity-50" style={{ animationDuration: '2.8s' }}></div>
@@ -293,16 +333,16 @@ function App() {
         />
       )}
       {showModels && (<ModelsPanel onClose={() => setShowModels(false)} />)}
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-5 gap-4 z-50 overscroll-none">
+      <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center p-5 gap-4 z-50 overscroll-none">
           <TopBar />
-          <div className="flex flex-row gap-4 w-[1000px] min-h-0 item-center justify-center">
+          <div className="flex flex-row gap-4 w-full max-w-[1000px] min-h-0 items-center justify-center">
             <OutputBox
               output={output}
               tokenCount={outputTokenCount}
-              onSend={send}
+              onSend={rethink}
               loading={loading}
               elapsedMs={elapsedMs}
-              conversation={showConversation ? history : null}
+              conversation={showConversation ? (viewMessages ?? history) : null}
               conversationTitle={activeChat?.title}
               onBackToChats={backToChats}
               pendingPrompt={pendingPrompt}
@@ -318,7 +358,7 @@ function App() {
             />
           </div>
           {loading && (
-            <div className="w-[1000px] flex justify-start">
+            <div className="w-full max-w-[1000px] flex justify-start">
               <button
                 onClick={() => setShowThoughts(true)}
                 className="text-xs font-medium text-zinc-400 hover:text-cyan-300 transition-colors"

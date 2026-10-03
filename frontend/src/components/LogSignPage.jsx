@@ -1,6 +1,59 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft, Eye, EyeOff, Loader2, Route, Layers, Merge } from "lucide-react";
 import api from "../api/api";
+
+const focusRing =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0f18]";
+
+const inputClass =
+  "w-full rounded-lg border border-[#1e2d3d] bg-[#131c2b] px-4 py-2.5 text-sm text-gray-200 outline-none transition-colors placeholder:text-gray-600 focus:border-[#4a9eff] focus:ring-1 focus:ring-[#4a9eff]/40 disabled:opacity-60";
+
+const PITCH = [
+  { Icon: Route, text: "Each question goes to the specialist best suited to it." },
+  { Icon: Layers, text: "Researcher, coder, writer and math models work on their part of the task." },
+  { Icon: Merge, text: "You get one merged answer, and can watch the thinking." },
+];
+
+function Field({ id, label, children }) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-xs text-gray-400">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function PasswordInput({ id, value, onChange, autoComplete, disabled }) {
+  const [visible, setVisible] = useState(false);
+  const Icon = visible ? EyeOff : Eye;
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        value={value}
+        onChange={onChange}
+        type={visible ? "text" : "password"}
+        placeholder="••••••••"
+        autoComplete={autoComplete}
+        disabled={disabled}
+        required
+        className={`${inputClass} pr-11`}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        aria-pressed={visible}
+        className={`absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-gray-500 transition-colors hover:text-gray-200 ${focusRing}`}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
 
 export default function LogSignPage() {
   const [mode, setMode] = useState("login");
@@ -9,21 +62,36 @@ export default function LogSignPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = async () => {
+  const isLogin = mode === "login";
+
+  const switchMode = (next) => {
+    setMode(next);
     setError("");
+    setConfirmPassword("");
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (submitting) return;
+    setError("");
+
+    if (!isLogin && password !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      if (mode === "login") {
+      if (isLogin) {
         const formData = new FormData();
         formData.append("username", email);
         formData.append("password", password);
         const { data } = await api.post("/auth/login", formData);
         localStorage.setItem("token", data.access_token);
-        navigate("/chat");
-
       } else {
-        if (password !== confirmPassword) return setError("Passwords don't match");
         const { data } = await api.post("/auth/signup", {
           username: email,
           email: email,
@@ -31,73 +99,158 @@ export default function LogSignPage() {
           password: password,
         });
         localStorage.setItem("token", data.access_token);
-        navigate("/chat");
       }
+      navigate("/chat");
     } catch (err) {
-      setError(err.response?.data?.detail || "Something went wrong");
+      setError(err.response?.data?.detail || "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  const tab = (active) =>
+    `flex-1 py-3 text-sm font-medium transition-colors ${focusRing} ${
+      active ? "border-b-2 border-[#4a9eff] text-[#4a9eff]" : "text-gray-500 hover:text-gray-300"
+    }`;
+
   return (
-    <div className="h-screen bg-[#0a0f18] text-white font-sans overflow-hidden flex flex-col">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="strip absolute w-full h-px top-[20%]" style={{ animationDuration: '2.8s' }}></div>
-        <div className="strip absolute w-full h-[3px] top-[20%] blur-sm opacity-50" style={{ animationDuration: '2.8s' }}></div>
-        <div className="strip absolute w-full h-px top-[55%] opacity-40" style={{ animationDuration: '3.5s', animationDelay: '-1.5s' }}></div>
-        <div className="strip absolute w-full h-[3px] top-[55%] blur-sm opacity-30" style={{ animationDuration: '3.5s', animationDelay: '-1.5s' }}></div>
-        <div className="strip absolute w-full h-px top-[80%] opacity-20" style={{ animationDuration: '4s', animationDelay: '-2.8s' }}></div>
+    <div className="flex min-h-screen flex-col overflow-y-auto bg-[#0a0f18] font-sans text-white">
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden" aria-hidden="true">
+        <div className="strip absolute top-[20%] h-px w-full" style={{ animationDuration: "2.8s" }}></div>
+        <div className="strip absolute top-[20%] h-[3px] w-full opacity-50 blur-sm" style={{ animationDuration: "2.8s" }}></div>
+        <div className="strip absolute top-[55%] h-px w-full opacity-40" style={{ animationDuration: "3.5s", animationDelay: "-1.5s" }}></div>
+        <div className="strip absolute top-[55%] h-[3px] w-full opacity-30 blur-sm" style={{ animationDuration: "3.5s", animationDelay: "-1.5s" }}></div>
+        <div className="strip absolute top-[80%] h-px w-full opacity-20" style={{ animationDuration: "4s", animationDelay: "-2.8s" }}></div>
       </div>
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-[#131c2b] bg-[#0a0f18]/80 backdrop-blur-md z-50">
+
+      <nav className="z-50 flex items-center justify-between border-b border-white/10 bg-[#0a0f18]/60 px-6 py-4 backdrop-blur-xl">
         <span className="text-xl font-bold tracking-tight">
           <span className="text-[#4a9eff]">CB</span>
           <span className="text-[#00e5ff]">-X</span>
         </span>
-        <div className="flex items-center gap-8">
-            <span className="text-xs text-gray-500 tracking-widest uppercase">Multi-model AI Orchestration</span>
-            <button onClick={() => navigate("/")} className="text-gray-400 hover:text-blue-400 text-[14px] tracking-wide transition-colors">Back</button>
-        </div>
+        <button
+          onClick={() => navigate("/")}
+          className={`inline-flex items-center gap-1.5 rounded text-sm text-gray-400 transition-colors hover:text-[#4a9eff] ${focusRing}`}
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back
+        </button>
       </nav>
-      <div className="flex-1 flex items-center justify-center gap-10 px-8 z-10">
-        <div className="w-[360px] bg-[#0d1117] border border-[#1e2d3d] rounded-2xl overflow-hidden flex-shrink-0">
-          <div className="flex border-b border-[#1e2d3d]">
-            <button onClick={() => setMode("login")} className={`flex-1 py-3 text-sm font-medium tracking-wide transition-colors ${mode === "login" ? "text-[#4a9eff] border-b-2 border-[#4a9eff] bg-[#0d1117]": "text-gray-500 hover:text-gray-300"}`}>Login</button>
-            <button onClick={() => setMode("signup")} className={`flex-1 py-3 text-sm font-medium tracking-wide transition-colors ${ mode === "signup" ? "text-[#4a9eff] border-b-2 border-[#4a9eff] bg-[#0d1117]" : "text-gray-500 hover:text-gray-300" }`} >Sign Up</button>
+
+      <main className="z-10 flex flex-1 items-center justify-center gap-16 px-6 py-10">
+        <div className="hidden max-w-sm lg:block">
+          <h1 className="text-4xl font-bold leading-tight tracking-tight">
+            Your questions, routed to the right model.
+          </h1>
+          <ul className="mt-8 space-y-5">
+            {PITCH.map(({ Icon, text }) => (
+              <li key={text} className="flex items-start gap-3 text-sm leading-relaxed text-gray-400">
+                <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[#00e5ff]" aria-hidden="true" />
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="w-full max-w-[400px] overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.7)] backdrop-blur-xl">
+          <div role="tablist" aria-label="Account" className="flex border-b border-white/10">
+            <button role="tab" aria-selected={isLogin} onClick={() => switchMode("login")} className={tab(isLogin)}>
+              Log in
+            </button>
+            <button role="tab" aria-selected={!isLogin} onClick={() => switchMode("signup")} className={tab(!isLogin)}>
+              Sign up
+            </button>
           </div>
-          <div className="p-6 space-y-4">
+
+          <form onSubmit={handleSubmit} className="space-y-4 p-6">
             <div>
-              <p className="text-white font-semibold text-lg mb-1">{mode === "login" ? "Welcome back" : "Create account"}</p>
-              <p className="text-gray-500 text-xs">{mode === "login"? "Sign in to your CB-X workspace": "Start orchestrating AI models today"}</p>
-            </div>
-            {mode === "signup" && (
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Full Name</label>
-                <input value={fullName} onChange={e => setFullName(e.target.value)} type="text" placeholder="John Doe" className="w-full bg-[#131c2b] border border-[#1e2d3d] rounded-lg px-4 py-2.5 text-sm text-gray-300 outline-none focus:border-[#4a9eff]/50 transition-colors placeholder-gray-600"/>
-              </div>
-            )}
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Email</label>
-              <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="you@example.com" className="w-full bg-[#131c2b] border border-[#1e2d3d] rounded-lg px-4 py-2.5 text-sm text-gray-300 outline-none focus:border-[#4a9eff]/50 transition-colors placeholder-gray-600"  />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Password</label>
-              <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="••••••••" className="w-full bg-[#131c2b] border border-[#1e2d3d] rounded-lg px-4 py-2.5 text-sm text-gray-300 outline-none focus:border-[#4a9eff]/50 transition-colors placeholder-gray-600"  />
+              <h2 className="mb-1 text-lg font-semibold">{isLogin ? "Welcome back" : "Create your account"}</h2>
+              <p className="text-xs text-gray-500">
+                {isLogin ? "Log in to your CB-X workspace." : "Start orchestrating AI models today."}
+              </p>
             </div>
 
-            {mode === "signup" && (
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">Confirm Password</label>
-                <input value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} type="password" placeholder="••••••••" className="w-full bg-[#131c2b] border border-[#1e2d3d] rounded-lg px-4 py-2.5 text-sm text-gray-300 outline-none focus:border-[#4a9eff]/50 transition-colors placeholder-gray-600"/>
-              </div>
+            {!isLogin && (
+              <Field id="full-name" label="Full name">
+                <input
+                  id="full-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  type="text"
+                  placeholder="John Doe"
+                  autoComplete="name"
+                  disabled={submitting}
+                  required
+                  className={inputClass}
+                />
+              </Field>
             )}
-            {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-            {mode === "login" && (<div className="flex justify-end"><button className="text-xs text-[#4a9eff] hover:text-[#00e5ff] transition-colors">Forgot password?</button></div>)}
-            <button onClick={handleSubmit} className="w-full bg-[#4a9eff] hover:bg-[#3a8eef] text-white py-2.5 rounded-lg text-sm font-medium transition-colors">{mode === "login" ? "Sign In" : "Create Account"}</button>
+
+            <Field id="email" label="Email">
+              <input
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="you@example.com"
+                autoComplete={isLogin ? "username" : "email"}
+                autoFocus
+                disabled={submitting}
+                required
+                className={inputClass}
+              />
+            </Field>
+
+            <Field id="password" label="Password">
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={isLogin ? "current-password" : "new-password"}
+                disabled={submitting}
+              />
+            </Field>
+
+            {!isLogin && (
+              <Field id="confirm-password" label="Confirm password">
+                <PasswordInput
+                  id="confirm-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  disabled={submitting}
+                />
+              </Field>
+            )}
+
+            {error && (
+              <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`flex w-full items-center justify-center gap-2 rounded-lg bg-[#4a9eff] py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3a8eef] disabled:cursor-not-allowed disabled:opacity-70 ${focusRing}`}
+            >
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+              {submitting ? (isLogin ? "Logging in…" : "Creating account…") : isLogin ? "Log in" : "Create account"}
+            </button>
+
             <p className="text-center text-xs text-gray-500">
-              {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
-              <button onClick={() => setMode(mode === "login" ? "signup" : "login")} className="text-[#4a9eff] hover:text-[#00e5ff] transition-colors">{mode === "login" ? "Sign up" : "Log in"} </button>
+              {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
+              <button
+                type="button"
+                onClick={() => switchMode(isLogin ? "signup" : "login")}
+                className={`rounded text-[#4a9eff] transition-colors hover:text-[#00e5ff] ${focusRing}`}
+              >
+                {isLogin ? "Sign up" : "Log in"}
+              </button>
             </p>
-          </div>
+          </form>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
