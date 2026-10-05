@@ -68,6 +68,11 @@ function App() {
     setThought("");
     setShowThoughts(false);
     setShowConversation(true);
+    if (clearInput) {
+      setInput("");
+      setAttachments([]);
+    }
+    setAttachmentError("");
     try {
       const { text: finalText, tokenCount } = await base(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
@@ -75,11 +80,6 @@ function App() {
       }, baseMessages, sentAttachments);
       setOutput(finalText);
       setOutputTokenCount(tokenCount);
-      if (clearInput) {
-        setInput("");
-        setAttachments([]);
-      }
-      setAttachmentError("");
       setChats((prev) => {
         const updatedChat = {
           ...chat,
@@ -97,6 +97,10 @@ function App() {
     } catch (error) {
       console.error("Chat request failed:", error);
       setOutput(`Unable to get a response: ${error instanceof Error ? error.message : "Unknown error"}`);
+      if (clearInput) {
+        setInput(prompt);
+        setAttachments(sentAttachments);
+      }
     } finally {
       if (requestStartedAt.current !== null) {
         setElapsedMs(performance.now() - requestStartedAt.current);
