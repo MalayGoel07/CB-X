@@ -22,6 +22,7 @@ async function base(input, onchunk, history = [], attachments = []) {
     let tokenCount = null;
     let errorText = "";
     let done = false;
+    const files = [];
 
     const processLine = (line) => {
         const normalizedLine = line.endsWith("\r") ? line.slice(0, -1) : line;
@@ -47,6 +48,26 @@ async function base(input, onchunk, history = [], attachments = []) {
                     return;
                 }
                 tokenCount = parsedTokenCount;
+                return;
+            }
+
+            if (text.startsWith("[File]")) {
+                try {
+                    const file = JSON.parse(text.slice("[File]".length));
+                    if (
+                        typeof file?.name === "string" &&
+                        typeof file?.url === "string" &&
+                        file.url.startsWith("/files/")
+                    ) {
+                        files.push({
+                            name: file.name,
+                            url: file.url,
+                            format: typeof file.format === "string" ? file.format : "",
+                        });
+                    }
+                } catch {
+                    // Ignore a malformed file event; the text answer still works.
+                }
                 return;
             }
 
@@ -95,7 +116,7 @@ async function base(input, onchunk, history = [], attachments = []) {
 
     if (errorText) throw new Error(errorText);
     if (!finalText.trim()) throw new Error("The server stream ended without a final answer.");
-    return { text: finalText, tokenCount };
+    return { text: finalText, tokenCount, files };
 }
 
 export default base;

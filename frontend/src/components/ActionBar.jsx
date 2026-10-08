@@ -1,12 +1,13 @@
-import { Plus, History, Cpu, User, Settings } from "lucide-react";
+import { Plus, History, Cpu, User, Settings, FolderOpen } from "lucide-react";
 
-function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, loading }) {
+function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, loading ,onCollection}) {
   const items = [
     { label: "New chat", Icon: Plus, onClick: onNewChat, disabled: loading },
     { label: "History", Icon: History, onClick: onHistory },
     { label: "Models", Icon: Cpu, onClick: onModels },
     { label: "Profile", Icon: User, onClick: onProfile },
     { label: "Settings", Icon: Settings, onClick: onSettings },
+    {label : "Collection", Icon: FolderOpen, onClick: onCollection}
   ];
 
   const btn =
