@@ -51,7 +51,7 @@ async def login(form_data:Annotated[OAuth2PasswordRequestForm,Depends()])->Token
 async def signup(user:UserSignup)->Token:
     if users_collection.find_one({"username":user.username}): raise HTTPException(400,"Username already exists")
     users_collection.insert_one({"username":user.username,"full_name":user.full_name,"email":user.email,"hashed_password":get_password_hash(user.password),"disabled":False})
-    return Token(access_token=create_access_token(data={"sub":user.username}),token_type="bearer")
+    return Token(access_token=create_access_token(data={"sub":user.username},expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)),token_type="bearer")
 
 class ProfileUpdate(BaseModel):
     full_name:str|None=None

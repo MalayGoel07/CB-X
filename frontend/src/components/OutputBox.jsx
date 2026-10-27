@@ -103,16 +103,32 @@ const UserMessage = ({ content, attachments }) => (
   </div>
 );
 
+const downloadFile = async (apiBase, f) => {
+  const r = await fetch(`${apiBase}${f.url}`, {
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const url = URL.createObjectURL(await r.blob());
+  const a = Object.assign(document.createElement("a"), { href: url, download: f.name });
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
 const FileCards = ({ files, apiBase }) => !files?.length ? null : (
   <ul className="mt-3 flex flex-wrap gap-2" aria-label="Generated files">
     {files.map((f) => (
       <li key={f.url}>
-        <a href={`${apiBase}${f.url}`} download={f.name} className={`inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-slate-950 px-3 py-2 text-xs text-zinc-200 transition-colors hover:border-cyan-400 hover:text-cyan-300 ${focusRing}`}>
+        <button
+          type="button"
+          onClick={() => downloadFile(apiBase, f).catch(() => {})}
+          className={`inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-slate-950 px-3 py-2 text-xs text-zinc-200 transition-colors hover:border-cyan-400 hover:text-cyan-300 ${focusRing}`}>
           <FileText className="h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
           <span className="max-w-[240px] truncate">{f.name}</span>
           <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] uppercase text-zinc-400">{f.format}</span>
           <Download className={`${ico} text-zinc-400`} aria-hidden="true" />
-        </a>
+        </button>
       </li>
     ))}
   </ul>
@@ -191,8 +207,8 @@ function OutputBox({
     }`;
 
   return (
-    <div className="flex h-[calc(100vh-14rem)] max-h-[900px] min-h-[320px] w-full flex-col overflow-hidden rounded-[20px] bg-slate-900">
-      {(conversation || output) && (
+    <div className="flex min-h-[200px] max-h-[900px] w-full flex-col self-stretch overflow-hidden rounded-[20px] bg-slate-900">      
+    {(conversation || output) && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-2">
           {conversation ? (
             <div className="flex min-w-0 items-center gap-3">

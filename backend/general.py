@@ -41,7 +41,7 @@ TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".tsv", ".html
              ".yaml", ".yml", ".log", ".sql", ".java", ".c", ".cpp"}
 EMBED_TASK = "Given a question, retrieve passages from the document that help answer it"
 
-INSTRUCT = {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "presence_penalty": 1.5}
+INSTRUCT = {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "presence_penalty": 0.3, "repeat_penalty": 1.05}
 THINK_CODE = {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "presence_penalty": 0.0}
 THINK_GENERAL = {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "presence_penalty": 1.5}
 
@@ -120,12 +120,20 @@ class BaseWorker:
             r = await client.chat(**self._kwargs(msgs))
         return r.message.content or "", r.eval_count
 
-    async def stream(self, task: str, history: Optional[List[Message]] = None, images: Optional[List[bytes]] = None,
-                     system_prompt_suffix: Optional[str] = None) -> AsyncIterator[tuple[str, Optional[int]]]:
+    @staticmethod
+    def runaway(text: str, window: int = 500) -> bool:
+        return len(text) > window and not re.search(r"[.!?:\n]", text[-window:])
+
+    async def stream(self, task, history=None, images=None, system_prompt_suffix=None):
         msgs = self._messages(task, history, images, system_prompt_suffix)
+        seen = ""
         async with ollama_semaphore:
             async for r in await client.chat(**self._kwargs(msgs, stream=True)):
-                yield r.message.content or "", r.eval_count
+                chunk = r.message.content or ""
+                seen += chunk
+                yield chunk, r.eval_count
+                if self.runaway(seen):
+                    break
 
 async def agent_ask(system, prompt, mode="fast", num_predict=2048):
     w = BaseWorker("CoderAgent", system, M_CODER, num_predict, think=(mode == "think"), sampling=THINK_CODE if mode == "think" else INSTRUCT)

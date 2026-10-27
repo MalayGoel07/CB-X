@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import base from "./api/base";
 import HistoryPanel from "./components/HistoryPanel";
 import ModelsPanel from "./components/ModelsPanel";
-import ThoughtsModal from "./components/ThoughtsModal";
+import ThoughtsInline from "./components/ThoughtsInline";
 import OutputBox from "./components/OutputBox";
 import InputBar from "./components/InputBar";
 import ActionBar from "./components/ActionBar";
@@ -11,7 +11,6 @@ import ProfilePanel from "./components/ProfilePanel";
 import SettingPanel from "./components/SettingPanel";
 import CollectionPanel from "./components/CollectionPanel";
 
-// Change this in one place when you deploy.
 const API = "http://localhost:8000";
 
 const STRIPS = [
@@ -50,25 +49,19 @@ function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatsReady, setChatsReady] = useState(false);
   const [thought, setThought] = useState("");
-  const [showThoughts, setShowThoughts] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
   const [showModels, setShowModels] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showCollection, setShowCollection] = useState(false);
-  // Messages shown in the chat while a request runs (hides the reply being replaced).
   const [viewMessages, setViewMessages] = useState(null);
   const requestStartedAt = useRef(null);
   const historyLoaded = useRef(false);
   const skipNextHistorySave = useRef(false);
-  // The last request, kept so Rethink can replay it (including the attached files).
   const lastRequest = useRef(null);
-
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const history = activeChat?.messages ?? [];
-
-  // Shows a chat's latest reply (text, tokens, generated files) in the output box.
   const showLatest = (chat) => {
     const m = latestReply(chat);
     setOutput(m?.content ?? "");
@@ -82,8 +75,6 @@ function App() {
     setOutputFiles([]);
   };
 
-  // Runs one request. baseMessages is the history sent to the models and the
-  // history the new exchange is appended to, so Rethink can replace the last reply.
   const submit = async (prompt, sentAttachments, baseMessages, { clearInput }) => {
     if (loading) return;
     const attachmentMetadata = sentAttachments.map(({ name, type }) => ({ name, type }));
@@ -103,7 +94,6 @@ function App() {
     setPendingAttachments(attachmentMetadata);
     resetOutput();
     setThought("");
-    setShowThoughts(false);
     setShowConversation(true);
     if (clearInput) {
       setInput("");
@@ -147,7 +137,6 @@ function App() {
       setViewMessages(null);
       setPendingPrompt("");
       setPendingAttachments([]);
-      setShowThoughts(false);
       setLoading(false);
     }
   };
@@ -162,7 +151,6 @@ function App() {
     submit(prompt, attachments, history, { clearInput: true });
   };
 
-  // Rethink: run the last request again and replace its reply (no duplicate turn).
   const rethink = () => {
     if (loading) return;
     const last = lastRequest.current;
@@ -170,7 +158,6 @@ function App() {
       submit(last.prompt, last.files, last.baseMessages, { clearInput: false });
       return;
     }
-    // After a page reload there is no saved request, so rebuild it from the chat.
     const lastReply = history[history.length - 1];
     const lastPrompt = history[history.length - 2];
     if (lastReply?.role !== "assistant" || lastPrompt?.role !== "user") return;
@@ -181,7 +168,6 @@ function App() {
     submit(lastPrompt.content, [], history.slice(0, -2), { clearInput: false });
   };
 
-  // Elapsed-time ticker while a request runs.
   useEffect(() => {
     if (!loading || requestStartedAt.current === null) return;
     const id = setInterval(() => {
@@ -190,7 +176,6 @@ function App() {
     return () => clearInterval(id);
   }, [loading]);
 
-  // Load saved chats once.
   useEffect(() => {
     if (!hasToken()) return;
     fetch(`${API}/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
@@ -213,7 +198,6 @@ function App() {
       .catch((error) => console.error("Failed to load chats:", error));
   }, []);
 
-  // Save chats whenever they change.
   useEffect(() => {
     if (!hasToken() || !historyLoaded.current) return;
     if (skipNextHistorySave.current) {
@@ -250,7 +234,6 @@ function App() {
     setShowConversation(false);
     showLatest(nextChat);
   };
-  
 
   const closePanels = () => {
     setShowHistory(false);
@@ -267,7 +250,6 @@ function App() {
 
   const onNewChat = async () => {
     setThought("");
-    setShowThoughts(false);
     setShowConversation(false);
     setInput("");
     resetOutput();
@@ -329,56 +311,65 @@ function App() {
       )}
       {showModels && <ModelsPanel apiBase={API} onClose={() => setShowModels(false)} />}
       {showCollection && <CollectionPanel apiBase={API} onClose={() => setShowCollection(false)} />}
+
       <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center p-5 gap-4 z-50 overscroll-none">
         <TopBar />
-        <div className="flex flex-row gap-4 w-full max-w-[1000px] min-h-0 items-center justify-center">
-          <OutputBox
-            output={output}
-            tokenCount={outputTokenCount}
-            files={outputFiles}
-            apiBase={API}
-            onSend={rethink}
-            loading={loading}
-            elapsedMs={elapsedMs}
-            conversation={showConversation ? (viewMessages ?? history) : null}
-            conversationTitle={activeChat?.title}
-            onBackToChats={backToChats}
-            pendingPrompt={pendingPrompt}
-            pendingAttachments={pendingAttachments}
-          />
-          <ActionBar
-            onHistory={openHistory}
-            onModels={openModels}
-            onNewChat={onNewChat}
-            onProfile={openProfile}
-            onSettings={openSettings}
-            onCollection={openCollection}
-            loading={loading || !chatsReady}
-          />
-        </div>
-        {loading && (
-          <div className="w-full max-w-[1000px] flex justify-start">
-            <button
-              onClick={() => setShowThoughts(true)}
-              className="text-xs font-medium text-zinc-400 hover:text-cyan-300 transition-colors"
-              title="View AI thoughts while the models are working"
-            >
-              Working &gt;
-            </button>
+
+        <div className="grid w-full max-w-[1000px] flex-1 min-h-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto] gap-x-4">
+          <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
+            <OutputBox
+              output={output}
+              tokenCount={outputTokenCount}
+              files={outputFiles}
+              apiBase={API}
+              onSend={rethink}
+              loading={loading}
+              elapsedMs={elapsedMs}
+              conversation={showConversation ? (viewMessages ?? history) : null}
+              conversationTitle={activeChat?.title}
+              onBackToChats={backToChats}
+              pendingPrompt={pendingPrompt}
+              pendingAttachments={pendingAttachments}
+            />
           </div>
-        )}
-        <InputBar
-          input={input}
-          onChange={setInput}
-          onSend={send}
-          loading={loading}
-          attachments={attachments}
-          onAttachmentsChange={setAttachments}
-          attachmentError={attachmentError}
-          onAttachmentError={setAttachmentError}
-        />
+
+          {/* Spans all rows, so it's centred on the whole grid and never moves when thoughts open. */}
+          <div className="col-start-2 row-start-1 row-span-3 self-center">
+            <ActionBar
+              onHistory={openHistory}
+              onModels={openModels}
+              onNewChat={onNewChat}
+              onProfile={openProfile}
+              onSettings={openSettings}
+              onCollection={openCollection}
+              loading={loading || !chatsReady}
+            />
+          </div>
+
+          <div className="col-start-1 row-start-2">
+            {(loading || thought) && (
+              <div className="pt-4">
+                <ThoughtsInline thought={thought} loading={loading} elapsedMs={elapsedMs} />
+              </div>
+            )}
+          </div>
+
+          {/* flex + justify-center puts the input on the output box's centre line. */}
+          <div className="col-start-1 row-start-3 flex justify-center pt-4">
+            <InputBar
+              input={input}
+              onChange={setInput}
+              onSend={send}
+              loading={loading}
+              attachments={attachments}
+              onAttachmentsChange={setAttachments}
+              attachmentError={attachmentError}
+              onAttachmentError={setAttachmentError}
+            />
+          </div>
+        </div>
       </div>
-      {showThoughts && loading && <ThoughtsModal thought={thought} onClose={() => setShowThoughts(false)} />}
+
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingPanel onClose={() => setShowSettings(false)} />}
     </div>
