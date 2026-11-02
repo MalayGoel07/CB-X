@@ -109,13 +109,6 @@ export default function LocalSetup({ onClose }) {
   }
 
   useEffect(() => {
-    if (!on) return undefined;
-    const timer = setTimeout(() => test(), 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
     if (!onClose) return;
     const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
