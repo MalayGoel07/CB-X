@@ -11,7 +11,10 @@ import ProfilePanel from "./components/ProfilePanel";
 import SettingPanel from "./components/SettingPanel";
 import CollectionPanel from "./components/CollectionPanel";
 
-const API = "http://localhost:8000";
+const API = import.meta.env.VITE_API_BASE_URL ||
+    (import.meta.env.DEV
+        ? "http://localhost:8000"
+        : "https://mlforge-backend-dmqd.onrender.com");
 
 const STRIPS = [
   ["h-px top-[20%]", "2.8s"],
@@ -370,8 +373,8 @@ function App() {
         </div>
       </div>
 
-      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
-      {showSettings && <SettingPanel onClose={() => setShowSettings(false)} />}
+      {showProfile && <ProfilePanel apiBase={API} onClose={() => setShowProfile(false)} />}
+      {showSettings && <SettingPanel apiBase={API} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

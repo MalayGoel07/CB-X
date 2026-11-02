@@ -1,4 +1,5 @@
-import ast, asyncio, json, os, re
+import ast, asyncio, base64, json, os, re, time
+from collections import defaultdict, deque
 from io import BytesIO
 from pathlib import Path
 from typing import AsyncIterator, List, Literal, Optional
@@ -23,7 +24,7 @@ load_dotenv()
 env = os.getenv
 M_ROUTER, M_RESEARCH, M_WRITER, M_CODER, M_MATH, M_IMAGE, M_EMBED, M_MERGER = (env(f"A{i}") for i in range(1, 9))
 DEFAULT_MODELS = {"Router": M_ROUTER, "Research": M_RESEARCH, "Writer": M_WRITER, "Coder": M_CODER, "Maths": M_MATH, "Merger": M_MERGER}
-ROLE_OF = {"Router": "Router", "Researcher": "Research", "Writer": "Writer", "DocWriter": "Writer", "CoderAgent": "Coder", "Maths": "Maths", "Merger": "Merger"}
+ROLE_OF = {"Router": "Router", "Researcher": "Research", "Writer": "Writer", "DocWriter": "Writer", "CoderAgent": "Coder", "Maths": "Maths", "Merger": "Merger", "ImageRed": "Router", "OCR": "Router"}
 model_overrides: ContextVar[dict] = ContextVar("model_overrides", default={})
 api_keys: ContextVar[dict] = ContextVar("api_keys", default={})
 
@@ -35,6 +36,8 @@ async def installed_models() -> set[str]:
     return {m.model for m in (await client.list()).models}
 
 NUM_CTX = int(env("NUM_CTX", "8192"))
+API_NUM_CTX = int(env("API_NUM_CTX", "32768"))
+LOCAL_OLLAMA = env("LOCAL_OLLAMA") == "1"
 MATH_PREDICT = int(env("MATH_PREDICT", "4096"))
 DOC_PREDICT = int(env("DOC_PREDICT", "3000"))
 MAX_FILE_BYTES = 25 * 1024 * 1024
@@ -49,6 +52,7 @@ THINK_GENERAL = {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "presence_penal
 
 client = AsyncClient(host="http://127.0.0.1:11434")
 ollama_semaphore = asyncio.Semaphore(int(env("model_count", "1")))
+request_times = defaultdict(deque)
 
 
 class Message(BaseModel):
@@ -99,44 +103,73 @@ class BaseWorker:
 
     def _api_model(self, provider: str) -> str:
         model = self._model() or ""
-        if ":" not in model:
-            return model
         defaults = {
             "openai": "gpt-4o-mini",
             "openrouter": "openai/gpt-4o-mini",
-            "anthropic": "claude-3-5-sonnet-latest",
+            "anthropic": "claude-sonnet-4-6",
             "google": env("GOOGLE_API_MODEL", "gemini-2.5-flash"),
             "grok": "grok-3-mini",
         }
-        return defaults[provider]
+        role = ROLE_OF.get(self.name, "")
+        return defaults[provider] if model == DEFAULT_MODELS.get(role) else model
 
     def _client(self) -> AsyncClient:
-        key, _ = self._api_config()
-        return AsyncClient(
-            host="http://127.0.0.1:11434",
-            headers={"Authorization": f"Bearer {key}"} if key else None,
-        )
+        return AsyncClient(host="http://127.0.0.1:11434")
 
     def _api_request(self, messages: list[dict], stream: bool, model_override: Optional[str] = None) -> tuple[str, dict, dict]:
         key, provider = self._api_config()
         if not key:
             return "", {}, {}
         model = model_override or self._api_model(provider)
+        has_images = any(m.get("images") for m in messages)
+        if has_images and provider not in {"openai", "openrouter", "anthropic", "google", "grok"}:
+            raise ValueError(f"Provider '{provider}' does not support images.")
+
+        def image_type(image: bytes) -> str:
+            if image.startswith(b"\x89PNG\r\n\x1a\n"):
+                return "image/png"
+            if image.startswith(b"\xff\xd8\xff"):
+                return "image/jpeg"
+            raise ValueError("Unsupported image format. Use PNG or JPEG.")
+
+        api_messages = []
+        for message in messages:
+            images = message.get("images") or []
+            clean = {k: v for k, v in message.items() if k != "images"}
+            if not images:
+                api_messages.append(clean)
+                continue
+            encoded = [base64.b64encode(image).decode() for image in images]
+            if provider in {"openai", "openrouter", "grok"}:
+                content = [{"type": "text", "text": clean.get("content", "")}]
+                content += [{"type": "image_url", "image_url": {"url": f"data:{image_type(image)};base64,{data}"}}
+                            for image, data in zip(images, encoded)]
+            elif provider == "anthropic":
+                content = [{"type": "text", "text": clean.get("content", "")}]
+                content += [{"type": "image", "source": {"type": "base64", "media_type": image_type(image), "data": data}}
+                            for image, data in zip(images, encoded)]
+            else:
+                content = [{"text": clean.get("content", "")}]
+                content += [{"inline_data": {"mime_type": image_type(image), "data": data}}
+                            for image, data in zip(images, encoded)]
+            clean["content"] = content
+            api_messages.append(clean)
         if provider in {"openai", "openrouter", "grok"}:
             urls = {"openai": "https://api.openai.com/v1/chat/completions", "openrouter": "https://openrouter.ai/api/v1/chat/completions", "grok": "https://api.x.ai/v1/chat/completions"}
             headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-            payload = {"model": model, "messages": messages, "stream": stream}
+            payload = {"model": model, "messages": api_messages, "stream": stream,
+                       "max_tokens": self.num_predict, "temperature": self.temperature}
             return urls[provider], headers, payload
         if provider == "anthropic":
-            system = next((m["content"] for m in messages if m["role"] == "system"), "")
-            payload = {"model": model, "max_tokens": self.num_predict, "system": system, "messages": [m for m in messages if m["role"] != "system"], "stream": stream}
+            system = next((m["content"] for m in api_messages if m["role"] == "system"), "")
+            payload = {"model": model, "max_tokens": self.num_predict, "system": system, "messages": [m for m in api_messages if m["role"] != "system"], "stream": stream}
             return "https://api.anthropic.com/v1/messages", {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}, payload
         if provider == "google":
-            contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in messages if m["role"] != "system"]
-            system = next((m["content"] for m in messages if m["role"] == "system"), "")
+            contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": ([{"text": m["content"]}] if isinstance(m["content"], str) else m["content"])} for m in api_messages if m["role"] != "system"]
+            system = next((m["content"] for m in api_messages if m["role"] == "system"), "")
             payload = {"contents": contents, "systemInstruction": {"parts": [{"text": system}]}, "generationConfig": {"temperature": self.temperature, "maxOutputTokens": self.num_predict}}
-            suffix = "&alt=sse" if stream else ""
-            return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{'streamGenerateContent' if stream else 'generateContent'}?key={key}{suffix}", {"Content-Type": "application/json"}, payload
+            suffix = "?alt=sse" if stream else ""
+            return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{'streamGenerateContent' if stream else 'generateContent'}{suffix}", {"x-goog-api-key": key, "Content-Type": "application/json"}, payload
         raise ValueError(f"Unsupported API provider: {provider}")
 
     async def _google_available_model(self) -> Optional[str]:
@@ -146,7 +179,7 @@ class BaseWorker:
         async with httpx.AsyncClient(timeout=30) as api_client:
             response = await api_client.get(
                 "https://generativelanguage.googleapis.com/v1beta/models",
-                params={"key": key},
+                headers={"x-goog-api-key": key},
             )
         response.raise_for_status()
         models = response.json().get("models", [])
@@ -202,8 +235,9 @@ class BaseWorker:
                         # Providers may send comments, blank keep-alives, or non-JSON
                         # diagnostic lines alongside the stream.
                         continue
-                    if "delta" in data.get("choices", [{}])[0]:
-                        text = data["choices"][0]["delta"].get("content") or ""
+                    choice = (data.get("choices") or [{}])[0]
+                    if "delta" in choice:
+                        text = choice["delta"].get("content") or ""
                     elif data.get("type") == "content_block_delta":
                         text = data.get("delta", {}).get("text", "")
                     else:
@@ -216,7 +250,8 @@ class BaseWorker:
         return f"{self.system_prompt.rstrip()}\n\n{s}" if s else self.system_prompt
 
     def input_budget(self, suffix: Optional[str] = None, n_images: int = 0) -> int:
-        return NUM_CTX - self.num_predict - SAFETY_TOKENS - count_tokens(self._system(suffix)) - n_images * IMAGE_TOKENS
+        context = API_NUM_CTX if self._api_config()[0] else NUM_CTX
+        return context - self.num_predict - SAFETY_TOKENS - count_tokens(self._system(suffix)) - n_images * IMAGE_TOKENS
 
     def _messages(self, task: str, history: Optional[List[Message]], images: Optional[List[bytes]], suffix: Optional[str]) -> list[dict]:
         if not self._model():
@@ -239,6 +274,8 @@ class BaseWorker:
         return kw
 
     async def run(self, task: str, history: Optional[List[Message]] = None, images: Optional[List[bytes]] = None, system_prompt_suffix: Optional[str] = None) -> tuple[str, Optional[int]]:
+        if not self._api_config()[0] and not LOCAL_OLLAMA:
+            raise ValueError("Add your API key in Settings to use the assistant.")
         msgs = self._messages(task, history, images, system_prompt_suffix)
         if self._api_config()[0]:
             return await self._api_run(msgs)
@@ -251,6 +288,8 @@ class BaseWorker:
         return len(text) > window and not re.search(r"[.!?:\n]", text[-window:])
 
     async def stream(self, task, history=None, images=None, system_prompt_suffix=None):
+        if not self._api_config()[0] and not LOCAL_OLLAMA:
+            raise ValueError("Add your API key in Settings to use the assistant.")
         msgs = self._messages(task, history, images, system_prompt_suffix)
         if self._api_config()[0]:
             async for chunk in self._api_stream(msgs):
@@ -472,11 +511,20 @@ async def select_relevant(text: str, question: str, budget_tokens: int) -> str:
     if estimate_tokens(text) <= budget_tokens:
         return text
     chunks = chunk_text(text)
+    if not LOCAL_OLLAMA:
+        value = api_keys.get().get("common")
+        key, provider = (value.get("key"), value.get("provider", "openai")) if isinstance(value, dict) else (value, "openai")
+        if provider not in {"openai", "google"} or not key:
+            return _head_tail_chunks(chunks, budget_tokens)
     inputs = [f"Instruct: {EMBED_TASK}\nQuery: {question}"] + chunks  # Qwen3-embedding: instruction on queries only
     vecs = []
-    async with ollama_semaphore:
+    if LOCAL_OLLAMA:
+        async with ollama_semaphore:
+            for i in range(0, len(inputs), 32):
+                vecs += (await client.embed(model=M_EMBED, input=inputs[i:i + 32], keep_alive=0)).embeddings
+    else:
         for i in range(0, len(inputs), 32):
-            vecs += (await client.embed(model=M_EMBED, input=inputs[i:i + 32], keep_alive=0)).embeddings
+            vecs += await _api_embeddings(inputs[i:i + 32], provider, key)
     arr = np.array(vecs, dtype=np.float32)
     arr /= np.linalg.norm(arr, axis=1, keepdims=True) + 1e-9
     picked, used = [], 0
@@ -485,6 +533,47 @@ async def select_relevant(text: str, question: str, budget_tokens: int) -> str:
             picked.append(int(i))
             used += cost
     return "\n\n[...]\n\n".join(chunks[i] for i in sorted(picked))
+
+
+def _head_tail_chunks(chunks: list[str], budget_tokens: int) -> str:
+    if not chunks or budget_tokens <= 0:
+        return ""
+    head, tail = [], []
+    head_used = tail_used = 0
+    for chunk in chunks:
+        cost = estimate_tokens(chunk)
+        if head and head_used + cost > budget_tokens * 0.4:
+            break
+        head.append(chunk)
+        head_used += cost
+    for chunk in reversed(chunks):
+        cost = estimate_tokens(chunk)
+        if tail and tail_used + cost > budget_tokens * 0.2:
+            break
+        tail.append(chunk)
+        tail_used += cost
+    selected = head + [chunk for chunk in reversed(tail) if chunk not in head]
+    return "\n\n[...]\n\n".join(selected)
+
+
+async def _api_embeddings(inputs: list[str], provider: str, key: str) -> list[list[float]]:
+    async with httpx.AsyncClient(timeout=120) as api_client:
+        if provider == "openai":
+            response = await api_client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={"model": "text-embedding-3-small", "input": inputs},
+            )
+            response.raise_for_status()
+            return [item["embedding"] for item in response.json()["data"]]
+        response = await api_client.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents",
+            headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+            json={"requests": [{"model": "models/gemini-embedding-001", "content": {"parts": [{"text": text}]}}
+                               for text in inputs]},
+        )
+        response.raise_for_status()
+        return [item["values"] for item in response.json()["embeddings"]]
 
 
 def sse_event(data: str) -> str:
@@ -546,6 +635,15 @@ async def make_document(fmt: str, message: str, history, file_context, analysis,
 async def orchestrate(message: str, history: List[Message], images: Optional[List[bytes]] = None, file_context: Optional[str] = None, system_prompt: Optional[str] = None, owner: str = "", models: Optional[dict] = None, keys: Optional[dict] = None):
     model_overrides.set(models or {})
     api_keys.set(keys or {})
+    now = time.monotonic()
+    recent = request_times[owner or "__anonymous__"]
+    while recent and now - recent[0] >= 60:
+        recent.popleft()
+    if len(recent) >= 20:
+        yield sse_event("[Error] Too many requests, slow down.")
+        yield sse_event("[DONE]")
+        return
+    recent.append(now)
     sfx, analysis = system_prompt, ""
     try:
         if images:
@@ -616,7 +714,18 @@ async def orchestrate(message: str, history: List[Message], images: Optional[Lis
     except ConnectionError:
         yield sse_event("[Error] Can't reach Ollama. Start it (`ollama serve`) and try again.")
     except ResponseError as e:
-        yield sse_event(f"[Error] Ollama rejected the request: {e.error} (is the model pulled?)")
-    except Exception as e:
-        yield sse_event(f"[Error] Unexpected server error: {e}")
+        detail = re.sub(r"https?://\S+", "[redacted-url]", str(e.error))
+        for value in api_keys.get().values():
+            key = value.get("key") if isinstance(value, dict) else value
+            if key:
+                detail = detail.replace(str(key), "[redacted-key]")
+        yield sse_event(f"[Error] Ollama rejected the request: {detail} (is the model pulled?)")
+    except httpx.HTTPStatusError as e:
+        yield sse_event(f"[Error] Provider returned {e.response.status_code}. Check your API key, model and quota.")
+    except httpx.RequestError:
+        yield sse_event("[Error] Could not reach the AI provider. Try again.")
+    except ValueError as e:
+        yield sse_event(f"[Error] {e}")
+    except Exception:
+        yield sse_event("[Error] Unexpected server error.")
     yield sse_event("[DONE]")

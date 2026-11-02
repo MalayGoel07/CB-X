@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, LogOut, Loader2 } from "lucide-react";
 
-const API = "http://localhost:8000";
-
 const inputClass =
   "w-full rounded-lg border border-zinc-700 bg-slate-950 px-3 py-2 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40";
 
@@ -16,7 +14,8 @@ const initials = (text) =>
     .slice(0, 2)
     .toUpperCase() || "U";
 
-function ProfilePanel({ onClose }) {
+function ProfilePanel({ apiBase, onClose }) {
+  const API = apiBase;
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [name, setName] = useState("");
@@ -50,7 +49,7 @@ function ProfilePanel({ onClose }) {
       console.error("Failed to fetch profile:", error);
       setStatus({ kind: "error", text: "Unable to load profile." });
     });
-  }, []);
+  }, [apiBase, API]);
 
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();

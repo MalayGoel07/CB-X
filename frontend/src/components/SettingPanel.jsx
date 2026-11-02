@@ -17,7 +17,7 @@ const THEMES = [
   { id: "system", label: "System", swatch: ["#0a0f18", "#f4f6fb", "#3b82f6"] },
 ];
 
-function SettingPanel({ onClose }) {
+function SettingPanel({ apiBase, onClose }) {
   const navigate = useNavigate();
   const [theme, setThemeState] = useState(getStoredTheme);
   const [scale, setScaleState] = useState(getStoredFontScale);
@@ -44,7 +44,7 @@ function SettingPanel({ onClose }) {
 
   const deleteAccount = async () => {
     if (!window.confirm("Delete your account and all stored files? This cannot be undone.")) return;
-    const response = await fetch("http://localhost:8000/me", {
+    const response = await fetch(`${apiBase}/me`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     });
