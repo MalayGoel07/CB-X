@@ -1,13 +1,14 @@
-import { Plus, History, Cpu, User, Settings, FolderOpen } from "lucide-react";
+import { Plus, History, Cpu, User, Settings, FolderOpen, Laptop } from "lucide-react";
 
-function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, loading ,onCollection}) {
+function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, loading ,onCollection, onLocal}) {
   const items = [
     { label: "New chat", Icon: Plus, onClick: onNewChat, disabled: loading },
     { label: "History", Icon: History, onClick: onHistory },
     { label: "Models", Icon: Cpu, onClick: onModels },
     { label: "Profile", Icon: User, onClick: onProfile },
     { label: "Settings", Icon: Settings, onClick: onSettings },
-    {label : "Collection", Icon: FolderOpen, onClick: onCollection}
+    {label : "Collection", Icon: FolderOpen, onClick: onCollection},
+    { label: "Local Ollama", Icon: Laptop, onClick: onLocal },
   ];
 
   const btn =

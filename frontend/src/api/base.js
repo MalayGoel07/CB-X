@@ -1,9 +1,5 @@
-const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.DEV
-        ? "http://localhost:8000"
-        : "https://cb-x-backend.onrender.com");
-        
+import { API_BASE as API_BASE_URL } from "./config";
+
 async function base(input, onchunk, history = [], attachments = []) {
     const token = localStorage.getItem("token");
     const body = new FormData();

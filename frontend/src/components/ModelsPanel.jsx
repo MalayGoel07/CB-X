@@ -74,7 +74,6 @@ function ModelsPanel({ apiBase, onClose }) {
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-
       <p className="mb-3 text-xs text-zinc-400">Choose a model for each worker and optionally add its API key. Leave a model blank to use the default.</p>
 
       {status === "loading" && (

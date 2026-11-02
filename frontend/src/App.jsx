@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import base from "./api/base";
+import serverBase from "./api/base";
+import localBase, { isLocalMode } from "./api/localBase";
+import LocalSetup from "./components/LocalSetup";
 import HistoryPanel from "./components/HistoryPanel";
 import ModelsPanel from "./components/ModelsPanel";
 import ThoughtsInline from "./components/ThoughtsInline";
@@ -10,11 +12,7 @@ import TopBar from "./components/TopBar";
 import ProfilePanel from "./components/ProfilePanel";
 import SettingPanel from "./components/SettingPanel";
 import CollectionPanel from "./components/CollectionPanel";
-
-const API = import.meta.env.VITE_API_BASE_URL ||
-    (import.meta.env.DEV
-        ? "http://localhost:8000"
-        : "https://cb-x-backend.onrender.com");
+import { API_BASE as API } from "./api/config";
 
 const STRIPS = [
   ["h-px top-[20%]", "2.8s"],
@@ -57,6 +55,7 @@ function App() {
   const [showModels, setShowModels] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLocal, setShowLocal] = useState(false);
   const [showCollection, setShowCollection] = useState(false);
   const [viewMessages, setViewMessages] = useState(null);
   const requestStartedAt = useRef(null);
@@ -104,7 +103,8 @@ function App() {
     }
     setAttachmentError("");
     try {
-      const { text: finalText, tokenCount, files = [] } = await base(prompt, (transcript, streamedFinal) => {
+      const run = isLocalMode() ? localBase : serverBase;
+      const { text: finalText, tokenCount, files = [] } = await run(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
       }, baseMessages, sentAttachments);
@@ -244,12 +244,14 @@ function App() {
     setShowProfile(false);
     setShowSettings(false);
     setShowCollection(false);
+    setShowLocal(false);
   };
   const openSettings = () => { closePanels(); setShowSettings(true); };
   const openProfile = () => { closePanels(); setShowProfile(true); };
   const openModels = () => { closePanels(); setShowModels(true); };
   const openHistory = () => { closePanels(); setShowHistory(true); setShowConversation(false); };
   const openCollection = () => { closePanels(); setShowCollection(true); };
+  const openLocal = () => { closePanels(); setShowLocal(true); };
 
   const onNewChat = async () => {
     setThought("");
@@ -344,6 +346,7 @@ function App() {
               onNewChat={onNewChat}
               onProfile={openProfile}
               onSettings={openSettings}
+              onLocal={openLocal}
               onCollection={openCollection}
               loading={loading || !chatsReady}
             />
@@ -375,6 +378,7 @@ function App() {
 
       {showProfile && <ProfilePanel apiBase={API} onClose={() => setShowProfile(false)} />}
       {showSettings && <SettingPanel apiBase={API} onClose={() => setShowSettings(false)} />}
+      {showLocal && <LocalSetup onClose={() => setShowLocal(false)} />}
     </div>
   );
 }
