@@ -91,7 +91,7 @@ function ProfilePanel({ apiBase, onClose }) {
   const displayName = name || username || "User";
 
   return (
-    <div className="profile-scrollbar box-border z-50 flex h-screen w-[360px] max-w-[100vw] shrink-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900 px-3 shadow-2xl shadow-black/50">
+    <div className="side-panel profile-scrollbar box-border z-50 flex h-screen w-[360px] max-w-[100vw] shrink-0 flex-col overflow-y-auto overflow-x-hidden bg-slate-900 px-3 shadow-2xl shadow-black/50">
       <div className="flex items-center justify-between px-2 py-5">
         <span className="font-mono text-[16px] font-bold uppercase tracking-[0.25em] text-blue-500">Profile</span>
         <button

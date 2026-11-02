@@ -103,7 +103,7 @@ function InputBar({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
-      className={`flex w-full max-w-[800px] flex-col gap-2 rounded-[24px] border px-3 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 focus-within:border-blue-500 focus-within:bg-slate-950 hover:border-blue-500 hover:shadow-lg hover:shadow-cyan-500/20 ${
+      className={`input-bar flex w-full max-w-[800px] flex-col gap-2 rounded-[24px] border px-3 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 focus-within:border-blue-500 focus-within:bg-slate-950 hover:border-blue-500 hover:shadow-lg hover:shadow-cyan-500/20 ${
         dragging
           ? "border-dashed border-cyan-400 bg-cyan-500/10"
           : "border-slate-900 bg-slate-900 hover:bg-slate-950"

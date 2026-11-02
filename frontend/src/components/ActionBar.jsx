@@ -17,7 +17,7 @@ function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, load
   return (
     <nav
       aria-label="Chat actions"
-      className="flex w-[57px] flex-col items-center justify-center gap-5 rounded-[30px] border border-zinc-800 bg-slate-900 p-2 shadow-2xl backdrop-blur-xl"
+      className="action-bar flex w-[57px] flex-col items-center justify-center gap-5 rounded-[30px] border border-zinc-800 bg-slate-900 p-2 shadow-2xl backdrop-blur-xl"
     >
       {items.map(({ label, Icon, onClick, disabled }) => (
         <button

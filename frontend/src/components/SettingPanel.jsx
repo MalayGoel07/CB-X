@@ -64,7 +64,7 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
     }`;
 
   return (
-    <div className="box-border h-screen w-[360px] max-w-[100vw] shrink-0 bg-slate-900 flex flex-col overflow-y-auto overflow-x-hidden px-3 z-50 shadow-2xl shadow-black/50">
+    <div className="side-panel box-border h-screen w-[360px] max-w-[100vw] shrink-0 bg-slate-900 flex flex-col overflow-y-auto overflow-x-hidden px-3 z-50 shadow-2xl shadow-black/50">
       <div className="flex items-center justify-between px-2 py-5">
         <span className="font-mono text-[16px] font-bold tracking-[0.25em] text-blue-500 uppercase">Settings</span>
         <button onClick={onClose} className="text-[13px] font-mono text-red-400 transition-colors">✕ close</button>

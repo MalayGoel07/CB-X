@@ -14,6 +14,81 @@ body {
   min-width: 0;
 }
 
+@media (max-width: 640px) {
+  body {
+    overflow: hidden;
+  }
+
+  .app-main {
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .app-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto auto auto;
+    gap: 0;
+  }
+
+  .action-dock {
+    grid-column: 1;
+    grid-row: 4;
+    align-self: stretch;
+    padding-top: 0.75rem;
+  }
+
+  .action-bar {
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 0.25rem;
+    border-radius: 1.25rem;
+    padding: 0.5rem;
+  }
+
+  .action-bar button {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+
+  .action-bar [role="tooltip"] {
+    display: none;
+  }
+
+  .input-bar {
+    max-width: none;
+    border-radius: 1.25rem;
+  }
+
+  .input-bar > div:last-child {
+    flex-wrap: wrap;
+  }
+
+  .input-bar textarea {
+    order: 1;
+    flex-basis: calc(100% - 3rem);
+  }
+
+  .input-bar select {
+    order: 2;
+    flex: 1 1 auto;
+  }
+
+  .input-bar button:last-child {
+    order: 3;
+    flex: 1 1 auto;
+  }
+
+  .side-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    border-left: 0;
+    border-right: 0;
+  }
+}
+
 .strip {
   background: linear-gradient(
     to right,
