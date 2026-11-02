@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Route, Layers, Merge, Search, Code, PenLine, Sigma, ArrowRight, Cpu } from "lucide-react";
-import { fetchConfiguredModels } from "../api/models";
+import { Route, Layers, Merge, Search, Code, PenLine, Sigma, ArrowRight } from "lucide-react";
 
 const focusRing =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00e5ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0f18]";
@@ -12,8 +11,6 @@ const SPECIALISTS = [
   { key: "write", label: "Writer", Icon: PenLine },
   { key: "math", label: "Math", Icon: Sigma },
 ];
-
-const ROLE_ICONS = { router: Route, research: Search, cod: Code, writ: PenLine, math: Sigma, merg: Merge };
 
 const STEPS = [
   { label: "Router", text: "Deciding which specialists to call…" },
@@ -119,27 +116,6 @@ function RoutingDemo() {
 
 export default function CBXLanding() {
   const navigate = useNavigate();
-  const [models, setModels] = useState([]);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [modelsLoadError, setModelsLoadError] = useState("");
-
-  useEffect(() => {
-    fetchConfiguredModels()
-      .then((data) => {
-        setModels(data);
-        setModelsLoaded(true);
-      })
-      .catch((error) => {
-        console.error("Failed to load configured models:", error);
-        setModelsLoadError("Unable to load configured models.");
-      });
-  }, []);
-
-  const iconForRole = (role) => {
-    const key = Object.keys(ROLE_ICONS).find((k) => role.toLowerCase().includes(k));
-    return key ? ROLE_ICONS[key] : Cpu;
-  };
-
   const getStarted = () => navigate("/logsign");
 
   return (
@@ -208,41 +184,6 @@ export default function CBXLanding() {
                 <p className="text-sm leading-relaxed text-gray-400">{desc}</p>
               </div>
             ))}
-          </div>
-        </section>
-
-        <section id="models" className="mx-auto max-w-4xl px-6 pb-20">
-          <h2 className="mb-2 text-3xl font-bold tracking-tight">The specialist lineup</h2>
-          <p className="mb-8 text-sm text-gray-400">The model currently configured for each role.</p>
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.7)] backdrop-blur-xl">
-            {modelsLoadError ? (
-              <p className="px-6 py-4 text-sm text-red-400" role="alert">{modelsLoadError}</p>
-            ) : !modelsLoaded ? (
-              <p className="px-6 py-4 text-sm text-gray-500">Loading models…</p>
-            ) : models.length === 0 ? (
-              <p className="px-6 py-4 text-sm text-gray-500">No models configured yet.</p>
-            ) : (
-              models.map((m, i) => {
-                const Icon = iconForRole(m.role);
-                return (
-                  <div
-                    key={m.role}
-                    className={`flex items-center justify-between px-6 py-4 text-sm transition-colors hover:bg-white/[0.05] ${
-                      i < models.length - 1 ? "border-b border-white/10" : ""
-                    }`}
-                  >
-                    <span className="flex items-center gap-3 font-medium text-white">
-                      <Icon className="h-4 w-4 text-[#4a9eff]" aria-hidden="true" />
-                      {m.role}
-                    </span>
-                    <span className="flex items-center gap-2 font-mono text-xs text-gray-400">
-                      {m.model || "Not configured"}
-                      {m.model && <span className="h-1.5 w-1.5 rounded-full bg-green-400" aria-hidden="true" />}
-                    </span>
-                  </div>
-                );
-              })
-            )}
           </div>
         </section>
 
