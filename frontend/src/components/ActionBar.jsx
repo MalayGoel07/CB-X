@@ -20,7 +20,14 @@ function ActionBar({ onNewChat, onHistory, onModels, onProfile, onSettings, load
       className="flex w-[57px] flex-col items-center justify-center gap-5 rounded-[30px] border border-zinc-800 bg-slate-900 p-2 shadow-2xl backdrop-blur-xl"
     >
       {items.map(({ label, Icon, onClick, disabled }) => (
-        <button key={label} onClick={onClick} disabled={disabled} aria-label={label} className={btn}>
+        <button
+          key={label}
+          data-tour={label === "New chat" ? "new-chat" : label === "History" ? "history" : undefined}
+          onClick={onClick}
+          disabled={disabled}
+          aria-label={label}
+          className={btn}
+        >
           <Icon className="h-[18px] w-[18px]" strokeWidth={1.75} aria-hidden="true" />
           <span
             role="tooltip"

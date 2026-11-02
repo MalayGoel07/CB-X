@@ -72,7 +72,7 @@ function ModelsPanel({ apiBase, onClose }) {
   };
 
   return (
-    <div className="models-scrollbar z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-zinc-800 bg-slate-900 p-4">
+    <div data-tour="models-panel" className="models-scrollbar z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-zinc-800 bg-slate-900 p-4">
       <div className="mb-5 flex items-center justify-between">
         <span className="text-[18px] font-medium uppercase tracking-widest text-blue-500">Models</span>
         <button onClick={onClose} aria-label="Close models" className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
@@ -99,7 +99,7 @@ function ModelsPanel({ apiBase, onClose }) {
       {status === "ready" && (
         <>
           {localMode && <datalist id="installed-models">{installed.map((m) => <option key={m} value={m} />)}</datalist>}
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5">
+          <div data-tour="common-key" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5">
             <label htmlFor="main-common-key" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-zinc-100"><KeyRound className="h-4 w-4 text-blue-400" aria-hidden="true" /> Main common API key</label>
             <div className="flex items-center gap-1">
               <select value={commonProvider} onChange={(e) => setCommonProvider(e.target.value)} className="rounded-lg border border-zinc-700 bg-slate-950 px-2 py-1.5 text-xs text-zinc-100">{["openai","openrouter","anthropic","google","grok"].map((p) => <option key={p} value={p}>{p}</option>)}</select>

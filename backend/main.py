@@ -67,7 +67,7 @@ async def login(form_data:Annotated[OAuth2PasswordRequestForm,Depends()])->Token
 @app.post("/auth/signup")
 async def signup(user:UserSignup)->Token:
     if users_collection.find_one({"username":user.username}): raise HTTPException(400,"Username already exists")
-    users_collection.insert_one({"username":user.username,"full_name":user.full_name,"email":user.email,"hashed_password":get_password_hash(user.password),"disabled":False})
+    users_collection.insert_one({"username":user.username,"full_name":user.full_name,"email":user.email,"hashed_password":get_password_hash(user.password),"disabled":False,"tutorial_done":False})
     return Token(access_token=create_access_token(data={"sub":user.username},expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)),token_type="bearer")
 
 class ProfileUpdate(BaseModel):
@@ -84,7 +84,7 @@ async def update_me(data:ProfileUpdate,current_user:Annotated[User,Depends(get_c
 @app.get("/me")
 async def get_me(current_user:Annotated[User,Depends(get_current_active_user)]):
     user=users_collection.find_one({"username":current_user.username})
-    return {"username":user["username"],"full_name":user.get("full_name",""),"email":user.get("email",""),"nickname":user.get("nickname",""),"instructions":user.get("instructions",""),"system_prompt":user.get("system_prompt","")}
+    return {"username":user["username"],"full_name":user.get("full_name",""),"email":user.get("email",""),"nickname":user.get("nickname",""),"instructions":user.get("instructions",""),"system_prompt":user.get("system_prompt",""),"tutorial_done":bool(user.get("tutorial_done",False))}
 
 MAX_ATTACHMENT_SIZE=10*1024*1024
 MAX_ATTACHMENT_COUNT=5
@@ -136,14 +136,20 @@ async def save_history(data:dict,current_user:Annotated[User,Depends(get_current
 async def get_chats(current_user:Annotated[User,Depends(get_current_active_user)]):
     user=users_collection.find_one({"username":current_user.username})
     chats=user.get("chats")
-    if chats is not None: return {"chats":chats}
+    tutorial_done=bool(user.get("tutorial_done",False))
+    if chats is not None: return {"chats":chats,"tutorial_done":tutorial_done}
     legacy_history=user.get("history",[])
     chats=[]
     if legacy_history:
         first_prompt=next((message["content"] for message in legacy_history if message.get("role")=="user"),"Imported chat")
         chats=[{"id":str(uuid4()),"title":first_prompt[:60],"messages":legacy_history}]
         users_collection.update_one({"username":current_user.username},{"$set":{"chats":chats}})
-    return {"chats":chats}
+    return {"chats":chats,"tutorial_done":tutorial_done}
+
+@app.post("/me/tutorial")
+async def complete_tutorial(current_user:Annotated[User,Depends(get_current_active_user)]):
+    users_collection.update_one({"username":current_user.username},{"$set":{"tutorial_done":True}})
+    return {"tutorial_done":True}
 
 @app.post("/chats")
 async def save_chats(data:ChatsUpdate,current_user:Annotated[User,Depends(get_current_active_user)]):

@@ -12,6 +12,8 @@ import TopBar from "./components/TopBar";
 import ProfilePanel from "./components/ProfilePanel";
 import SettingPanel from "./components/SettingPanel";
 import CollectionPanel from "./components/CollectionPanel";
+import Tour from "./components/Tour.jsx";
+import { mainSteps, localSteps } from "./components/tours.jsx";
 import { API_BASE as API } from "./api/config";
 
 const STRIPS = [
@@ -35,6 +37,15 @@ const saveChats = async (chats) => {
   if (!response.ok) throw new Error(`Failed to save chats: ${response.status}`);
 };
 
+const markTutorialDone = async () => {
+  const response = await fetch(`${API}/me/tutorial`, {
+    method: "POST",
+    headers: { Authorization: `******"token")}` },
+    keepalive: true,
+  });
+  if (!response.ok) throw new Error(`Failed to save tutorial status: ${response.status}`);
+};
+
 function App() {
   const [input, setInput] = useState("");
   const [output, setOutput] = useState("");
@@ -49,6 +60,7 @@ function App() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatsReady, setChatsReady] = useState(false);
+  const [tutorialDone, setTutorialDone] = useState(null);
   const [thought, setThought] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
@@ -58,6 +70,7 @@ function App() {
   const [showLocal, setShowLocal] = useState(false);
   const [executionMode, setExecutionMode] = useState("api");
   const [showCollection, setShowCollection] = useState(false);
+  const [tour, setTour] = useState(null);
   const [viewMessages, setViewMessages] = useState(null);
   const requestStartedAt = useRef(null);
   const historyLoaded = useRef(false);
@@ -192,6 +205,7 @@ function App() {
         const selected = loaded[loaded.length - 1];
         skipNextHistorySave.current = true;
         historyLoaded.current = true;
+        setTutorialDone(Boolean(data.tutorial_done));
         setChatsReady(true);
         setChats(loaded);
         if (selected) {
@@ -210,6 +224,12 @@ function App() {
     }
     saveChats(chats).catch((error) => console.error("Failed to save chats:", error));
   }, [chats]);
+
+  useEffect(() => {
+    if (!chatsReady || tutorialDone !== false) return undefined;
+    const id = setTimeout(() => setTour("main"), 0);
+    return () => clearTimeout(id);
+  }, [chatsReady, tutorialDone]);
 
   const clearChat = async () => {
     skipNextHistorySave.current = true;
@@ -257,6 +277,16 @@ function App() {
     setExecutionMode(mode);
     if (mode === "local") openLocal();
     else openModels();
+  };
+  const endTour = () => {
+    const closingTour = tour;
+    setTour(null);
+    if (closingTour !== "main") return;
+    setTutorialDone(true);
+    closePanels();
+    markTutorialDone().catch((error) => {
+      console.error("Failed to save tutorial status:", error);
+    });
   };
 
   const onNewChat = async () => {
@@ -385,8 +415,13 @@ function App() {
       </div>
 
       {showProfile && <ProfilePanel apiBase={API} onClose={() => setShowProfile(false)} />}
-      {showSettings && <SettingPanel apiBase={API} onClose={() => setShowSettings(false)} />}
-      {showLocal && <LocalSetup onClose={() => setShowLocal(false)} />}
+      {showSettings && <SettingPanel apiBase={API} onClose={() => setShowSettings(false)} onGuide={() => setTour("main")} />}
+      {showLocal && <LocalSetup onClose={() => setShowLocal(false)} onGuide={() => setTour("local")} />}
+      <Tour
+        open={!!tour}
+        onClose={endTour}
+        steps={tour === "local" ? localSteps() : mainSteps({ openModels, openLocal, closeAll: closePanels })}
+      />
     </div>
   );
 }

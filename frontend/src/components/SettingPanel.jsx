@@ -17,7 +17,7 @@ const THEMES = [
   { id: "system", label: "System", swatch: ["#0a0f18", "#f4f6fb", "#3b82f6"] },
 ];
 
-function SettingPanel({ apiBase, onClose }) {
+function SettingPanel({ apiBase, onClose, onGuide }) {
   const navigate = useNavigate();
   const [theme, setThemeState] = useState(getStoredTheme);
   const [scale, setScaleState] = useState(getStoredFontScale);
@@ -128,6 +128,12 @@ function SettingPanel({ apiBase, onClose }) {
       </section>
 
       <div className="px-1 py-4">
+        <button
+          onClick={onGuide}
+          className="mb-3 h-[44px] w-full rounded-xl border border-cyan-500/50 text-sm font-medium text-cyan-300 transition-colors hover:bg-cyan-500/10"
+        >
+          Take the tour
+        </button>
         <button
           onClick={reset}
           className="w-full h-[44px] rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 hover:border-blue-500 transition-colors"

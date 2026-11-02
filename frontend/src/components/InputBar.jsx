@@ -96,6 +96,7 @@ function InputBar({
 
   return (
     <div
+      data-tour="input"
       onDragOver={(e) => {
         e.preventDefault();
         if (!loading) setDragging(true);
@@ -176,6 +177,7 @@ function InputBar({
         />
 
         <select
+          data-tour="mode"
           value={executionMode}
           onChange={(e) => onExecutionModeChange(e.target.value)}
           disabled={loading}

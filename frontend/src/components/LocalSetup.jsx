@@ -89,7 +89,7 @@ sudo systemctl restart ollama`,
   );
 }
 
-export default function LocalSetup({ onClose }) {
+export default function LocalSetup({ onClose, onGuide }) {
   const [on, setOn] = useState(isLocalMode());
   const [url, setUrl] = useState(ollamaUrl());
   const [models, setModels] = useState([]);
@@ -125,7 +125,7 @@ export default function LocalSetup({ onClose }) {
   const ready = ROLES.every((role) => cfg[role]);
 
   return (
-    <div className="models-scrollbar z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-zinc-800 bg-slate-900 p-4">
+    <div data-tour="local-panel" className="models-scrollbar z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-zinc-800 bg-slate-900 p-4">
       <div className="mb-5 flex items-center justify-between">
         <span className="text-[18px] font-medium uppercase tracking-widest text-blue-500">Local mode</span>
         {onClose && (
@@ -136,6 +136,14 @@ export default function LocalSetup({ onClose }) {
       </div>
 
       <p className="mb-3 text-xs text-zinc-400">Run the workers on your own Ollama instead of the server.</p>
+      {onGuide && (
+        <button
+          onClick={onGuide}
+          className={`mb-4 self-start rounded-lg border border-cyan-500/50 px-3 py-1.5 text-xs text-cyan-300 transition-colors hover:bg-cyan-500/10 ${focusRing}`}
+        >
+          Setup guide
+        </button>
+      )}
 
       {/* Toggle */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-slate-950 p-2.5">
@@ -159,7 +167,7 @@ export default function LocalSetup({ onClose }) {
         <Plug className="h-4 w-4 text-blue-400" aria-hidden="true" />
         Ollama address
       </label>
-      <div className="flex items-center gap-1">
+      <div data-tour="local-url" className="flex items-center gap-1">
         <input id="ollama-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:11434" className={inputCls} />
         <button
           onClick={test}
@@ -203,7 +211,7 @@ export default function LocalSetup({ onClose }) {
 
       {/* Role → model */}
       {status === "ok" && (
-        <ul className="mt-3 flex flex-col">
+        <ul data-tour="local-roles" className="mt-3 flex flex-col">
           {ROLES.map((role, i) => {
             const Icon = ROLE_ICONS[role] ?? Cpu;
             return (
