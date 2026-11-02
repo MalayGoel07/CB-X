@@ -1,5 +1,4 @@
 import ast, asyncio, io, os, re, shutil, subprocess, sys, tempfile, time, tokenize
-from datetime import datetime
 from pathlib import Path
 from typing import AsyncIterator, Awaitable, Callable, Optional
 
@@ -9,7 +8,6 @@ env = os.getenv
 NUM_CTX = int(env("NUM_CTX", "8192"))                     # use 12288 for the agent if your VRAM allows
 BUDGETS = {"dsa": int(env("DSA_SECONDS", "600")), "web": int(env("WEB_SECONDS", "2400"))}
 FIX_ROUNDS = int(env("AGENT_FIX_ROUNDS", "3"))
-OUT_ROOT = Path(env("AGENT_OUT", "agent_output"))
 DSA_FILES = {"solution.py", "brute.py", "gen.py"}
 WEB_FILES = {"index.html", "style.css", "script.js"}
 LANGS = {"index.html": "html", "style.css": "css", "script.js": "javascript"}
@@ -377,13 +375,6 @@ class CodingAgent:
         async for item in (self._dsa if tier == "dsa" else self._web)(task, dl):
             yield item
 
-    def _save(self, tier: str, files: dict[str, str]) -> Path:
-        out = OUT_ROOT / f"{tier}-{datetime.now():%Y%m%d-%H%M%S}"
-        out.mkdir(parents=True, exist_ok=True)
-        for name, body in files.items():
-            (out / name).write_text(body, encoding="utf-8")
-        return out
-
     async def _dsa_fix_plan(self, dl, task, files, out):
         """-> (prompt, only_file or None, mode, num_predict). On a MISMATCH, first ask which side is right,
         then repair only the wrong file instead of letting the model guess."""
@@ -458,11 +449,10 @@ class CodingAgent:
                     break
                 files.update({n: strip_comments(b) if n != "solution.py" else b for n, b in fixed.items()})
 
-        out_dir = self._save("dsa", files)
         note = ("Matched an independent brute-force version on 300 random inputs "
                 "(this shows the two agree, not that both are right)." if passed
                 else f"NOT fully verified. Last check output:\n{clip(last, 600)}")
-        yield "final", f"{note}\n\n{TICKS}python\n{files['solution.py'].rstrip()}\n{TICKS}\n\nSaved to: {out_dir}"
+        yield "final", f"{note}\n\n{TICKS}python\n{files['solution.py'].rstrip()}\n{TICKS}"
 
     # ----- web tier -----
     async def _web(self, task: str, dl: Deadline):
@@ -513,11 +503,10 @@ class CodingAgent:
                 files.update(fixed)
                 files["index.html"] = ensure_links(files["index.html"])
 
-        out_dir = self._save("web", files)
         status = (f"Checks passed ({'; '.join(notes)})." if passed
                   else f"NOT fully verified. Last problems:\n{clip(errors, 700)}")
         blocks = "\n\n".join(f"### {n}\n{TICKS}{LANGS[n]}\n{files[n].rstrip()}\n{TICKS}" for n in LANGS)
-        yield "final", f"{status}\n\n{blocks}\n\nSaved to: {out_dir}"
+        yield "final", f"{status}\n\n{blocks}"
 
 
 # ---------- try it from the command line ----------
