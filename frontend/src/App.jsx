@@ -293,7 +293,7 @@ function App() {
   };
 
   return (
-    <div className="app-root h-screen overflow-hidden bg-[#0a0f18] text-white flex overscroll-none">
+    <div className="app-root h-screen overflow-none bg-[#0a0f18] text-white flex overscroll-none">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         {STRIPS.map(([cls, duration, delay], i) => (
           <div
