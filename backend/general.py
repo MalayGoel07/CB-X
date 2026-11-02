@@ -1,4 +1,4 @@
-import ast, asyncio, base64, json, os, re, time
+import ast, asyncio, base64, json, logging, os, re, time
 from collections import defaultdict, deque
 from io import BytesIO
 from pathlib import Path
@@ -42,6 +42,7 @@ MATH_PREDICT = int(env("MATH_PREDICT", "4096"))
 DOC_PREDICT = int(env("DOC_PREDICT", "3000"))
 MAX_FILE_BYTES = 25 * 1024 * 1024
 SAFETY_TOKENS, IMAGE_TOKENS, HISTORY_RESERVE = 300, 1000, 1000
+ROUTER_TIMEOUT = 30
 TEXT_EXTS = {".txt", ".md", ".py", ".js", ".ts", ".json", ".csv", ".tsv", ".html", ".css", ".xml",
              ".yaml", ".yml", ".log", ".sql", ".java", ".c", ".cpp"}
 EMBED_TASK = "Given a question, retrieve passages from the document that help answer it"
@@ -53,6 +54,7 @@ THINK_GENERAL = {"temperature": 1.0, "top_p": 0.95, "top_k": 20, "presence_penal
 client = AsyncClient(host="http://127.0.0.1:11434")
 ollama_semaphore = asyncio.Semaphore(int(env("model_count", "1")))
 request_times = defaultdict(deque)
+logger = logging.getLogger(__name__)
 
 
 class Message(BaseModel):
@@ -111,7 +113,7 @@ class BaseWorker:
             "grok": "grok-3-mini",
         }
         role = ROLE_OF.get(self.name, "")
-        return defaults[provider] if model == DEFAULT_MODELS.get(role) else model
+        return defaults[provider] if not model or model == DEFAULT_MODELS.get(role) else model
 
     def _client(self) -> AsyncClient:
         return AsyncClient(host="http://127.0.0.1:11434")
@@ -254,9 +256,10 @@ class BaseWorker:
         return context - self.num_predict - SAFETY_TOKENS - count_tokens(self._system(suffix)) - n_images * IMAGE_TOKENS
 
     def _messages(self, task: str, history: Optional[List[Message]], images: Optional[List[bytes]], suffix: Optional[str]) -> list[dict]:
-        if not self._model():
+        api_configured = bool(self._api_config()[0])
+        if not api_configured and not self._model():
             raise ValueError(f"{self.name}: no model configured (check Models)")
-        if not self.model:
+        if not api_configured and not self.model:
             raise ValueError(f"{self.name}: no model configured (check A1-A8 in .env)")
         room = self.input_budget(suffix, len(images or [])) - count_tokens(task)
         if room < 0:
@@ -660,11 +663,18 @@ async def orchestrate(message: str, history: List[Message], images: Optional[Lis
 
         yield sse_event("[Router] : Deciding which specialists to call...")
         hint = f"\n\n[Attached image shows: {analysis[:400]}]" if analysis else ""
-        raw, _ = await router_worker.run(message + hint, history, system_prompt_suffix=sfx)
         try:
-            needed = list(dict.fromkeys(w for w in parse_router_output(raw) if w in WORKER_MAP)) or ["Researcher"]
-        except ValueError:
+            raw, _ = await asyncio.wait_for(
+                router_worker.run(message + hint, history, system_prompt_suffix=sfx),
+                timeout=ROUTER_TIMEOUT,
+            )
+            try:
+                needed = list(dict.fromkeys(w for w in parse_router_output(raw) if w in WORKER_MAP)) or ["Researcher"]
+            except ValueError:
+                needed = ["Researcher"]
+        except asyncio.TimeoutError:
             needed = ["Researcher"]
+            yield sse_event(f"[Router] Timed out after {ROUTER_TIMEOUT}s; continuing with Researcher.")
         yield sse_event(f"[Router] : Calling {needed}")
 
         agent_done = False
@@ -726,6 +736,12 @@ async def orchestrate(message: str, history: List[Message], images: Optional[Lis
         yield sse_event("[Error] Could not reach the AI provider. Try again.")
     except ValueError as e:
         yield sse_event(f"[Error] {e}")
-    except Exception:
-        yield sse_event("[Error] Unexpected server error.")
+    except Exception as e:
+        logger.exception("Unhandled chat error")
+        detail = str(e).strip() or type(e).__name__
+        for value in api_keys.get().values():
+            key = value.get("key") if isinstance(value, dict) else value
+            if key:
+                detail = detail.replace(str(key), "[redacted-key]")
+        yield sse_event(f"[Error] Provider response could not be processed: {detail}")
     yield sse_event("[DONE]")

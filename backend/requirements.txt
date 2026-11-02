@@ -29,6 +29,7 @@ python-docx>=1.1.0
 python-dotenv==1.2.2
 python-multipart==0.0.30
 python-pptx>=1.0.0
+reportlab>=4.0
 starlette==1.2.1
 typing-inspection==0.4.2
 typing_extensions==4.15.0

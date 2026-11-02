@@ -4,10 +4,11 @@ from fastapi.responses import StreamingResponse,Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel,Field,ValidationError
 import asyncio,json,os,uvicorn
-from db import users_collection,files_collection,load_file,show_files,delete_file,file_name
+from db import users_collection,files_collection,load_file,show_files,delete_file,file_name,save_file
 from urllib.parse import quote
 from doc_agent import MIME
 from general import M_CODER,M_MATH,M_MERGER,M_RESEARCH,M_ROUTER,M_WRITER,Message,orchestrate,read_file_content,DEFAULT_MODELS,installed_models,norm_model
+from doc_agent import build_document,detect_format
 from security import Token,UserSignup,authenticate_user,create_access_token,get_password_hash,get_current_active_user,User
 from datetime import timedelta
 from typing import List,Annotated
@@ -48,6 +49,10 @@ class ChatSession(BaseModel):
 
 class ChatsUpdate(BaseModel):
     chats:List[ChatSession]
+
+class DocumentRequest(BaseModel):
+    message:str=Field(...,min_length=1)
+    markdown:str=Field(...,min_length=1)
 
 @app.get("/")
 async def root():
@@ -121,6 +126,17 @@ async def chat(message:str=Form(...),history:str=Form("[]"),files:List[UploadFil
     prompt=message.strip() or "Analyze the attached file(s)."
     user_doc=users_collection.find_one({"username":current_user.username},{"models":1,"model_keys":1}) or {}
     return StreamingResponse(orchestrate(prompt,history_messages,image_data or None,file_context,current_user.system_prompt,current_user.username,user_doc.get("models") or None,user_doc.get("model_keys") or None),media_type="text/event-stream")
+
+@app.post("/documents")
+async def create_document(data:DocumentRequest,current_user:Annotated[User,Depends(get_current_active_user)]):
+    fmt=detect_format(data.message)
+    if not fmt:
+        return {"file":None}
+    name,content=await asyncio.to_thread(build_document,fmt,data.markdown)
+    file_id=await asyncio.to_thread(save_file,name,content,current_user.username)
+    if not file_id:
+        raise HTTPException(400,"File limit reached. Delete some files in Collection and try again.")
+    return {"file":{"name":name,"url":f"/files/{file_id}","format":fmt}}
 
 @app.get("/history")
 async def get_history(current_user:Annotated[User,Depends(get_current_active_user)]):

@@ -40,7 +40,7 @@ const saveChats = async (chats) => {
 const markTutorialDone = async () => {
   const response = await fetch(`${API}/me/tutorial`, {
     method: "POST",
-    headers: { Authorization: `******"token")}` },
+    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
     keepalive: true,
   });
   if (!response.ok) throw new Error(`Failed to save tutorial status: ${response.status}`);

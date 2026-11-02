@@ -88,6 +88,23 @@ def test_openrouter_free_model_passes_through():
     assert payload["model"] == "meta-llama/llama-3.3-70b:free"
 
 
+def test_api_key_allows_provider_default_without_configured_model():
+    w = worker("openai", model=None)
+    _, _, payload = w._api_request(w._messages("hi", None, None, None), False)
+    assert payload["model"] == "gpt-4o-mini"
+
+
+def test_router_timeout_falls_back_to_researcher(monkeypatch):
+    async def slow_router(*args, **kwargs):
+        await asyncio.sleep(0.01)
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(general, "ROUTER_TIMEOUT", 0)
+    monkeypatch.setattr(general.router_worker, "run", slow_router)
+    events = asyncio.run(collect(general.orchestrate("hi", [], owner="test")))
+    assert any("continuing with Researcher" in event for event in events)
+
+
 def test_head_tail_fallback_without_embeddings(monkeypatch):
     monkeypatch.setattr(general, "LOCAL_OLLAMA", False)
     general.api_keys.set({"common": {"key": "secret", "provider": "anthropic"}})
