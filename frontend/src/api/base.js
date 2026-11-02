@@ -1,10 +1,16 @@
+const API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL ||
+    (import.meta.env.DEV
+        ? "http://localhost:8000"
+        : "https://mlforge-backend-dmqd.onrender.com");
+        
 async function base(input, onchunk, history = [], attachments = []) {
     const token = localStorage.getItem("token");
     const body = new FormData();
     body.append("message", input);
     body.append("history", JSON.stringify(history));
     attachments.forEach((file) => body.append("files", file));
-    const response = await fetch("http://localhost:8000/chat", {
+    const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: {"Authorization": `Bearer ${token}`},
         body

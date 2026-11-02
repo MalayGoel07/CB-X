@@ -1,6 +1,9 @@
-
 import axios from "axios";
 
 export default axios.create({
-    baseURL: "http://localhost:8000"
+    baseURL:
+        import.meta.env.VITE_API_BASE_URL ||
+        (import.meta.env.DEV
+            ? "http://localhost:8000"
+            : "https://mlforge-backend-dmqd.onrender.com"),
 });
