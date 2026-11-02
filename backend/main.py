@@ -17,10 +17,11 @@ from pathlib import Path
 
 load_dotenv()
 
-origins = [
+frontend_url = os.getenv("frontend_url", "http://localhost:5173")
+origins = list({
     "http://localhost:5173",
-    os.getenv("frontend_url", "http://localhost:5173"),
-]
+    *[u.strip().rstrip("/") for u in frontend_url.split(",") if u.strip()],
+})
 
 frontend_url=os.getenv("frontend_url","http://localhost:5173")
 ACCESS_TOKEN_EXPIRE_MINUTES=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))

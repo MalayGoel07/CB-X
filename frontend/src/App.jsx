@@ -14,7 +14,7 @@ import CollectionPanel from "./components/CollectionPanel";
 const API = import.meta.env.VITE_API_BASE_URL ||
     (import.meta.env.DEV
         ? "http://localhost:8000"
-        : "https://mlforge-backend-dmqd.onrender.com");
+        : "https://cb-x-backend.onrender.com");
 
 const STRIPS = [
   ["h-px top-[20%]", "2.8s"],
