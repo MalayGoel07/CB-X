@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Cpu, Route, Search, Code, PenLine, Sigma, Merge, RotateCw, RotateCcw, KeyRound } from "lucide-react";
+import { isLocalMode, listLocalModels } from "../api/localBase";
 
 const ROLE_ICONS = { router: Route, research: Search, cod: Code, writ: PenLine, math: Sigma, merg: Merge };
 const iconForRole = (role) => ROLE_ICONS[Object.keys(ROLE_ICONS).find((k) => String(role).toLowerCase().includes(k))] ?? Cpu;
@@ -18,6 +19,7 @@ const req = async (url, opts = {}) => {
 };
 
 function ModelsPanel({ apiBase, onClose }) {
+  const localMode = isLocalMode();
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({}); // role -> text typed by the user, "" = default
   const [keyDraft, setKeyDraft] = useState({});
@@ -33,14 +35,17 @@ function ModelsPanel({ apiBase, onClose }) {
 
   useEffect(() => {
     let off = false;
-    Promise.all([req(`${apiBase}/me/models`), req(`${apiBase}/models/installed`).catch(() => ({ models: [] }))])
+    Promise.all([
+      req(`${apiBase}/me/models`),
+      localMode ? listLocalModels().catch(() => []) : Promise.resolve([]),
+    ])
       .then(([m, i]) => {
         if (off) return;
-        setRows(m.models); setDraft(toDraft(m.models)); setKeyDraft(toKeyDraft(m.models)); setProviderDraft(Object.fromEntries(m.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(m.common_key || ""); setCommonProvider(m.common_provider || "openai"); setSavedCommonKey(m.common_key || ""); setInstalled(i.models); setStatus("ready");
+        setRows(m.models); setDraft(toDraft(m.models)); setKeyDraft(toKeyDraft(m.models)); setProviderDraft(Object.fromEntries(m.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(m.common_key || ""); setCommonProvider(m.common_provider || "openai"); setSavedCommonKey(m.common_key || ""); setInstalled(i); setStatus("ready");
       })
       .catch((e) => { if (!off) { console.error("Failed to load models:", e); setStatus("error"); } });
     return () => { off = true; };
-  }, [apiBase, tick]);
+  }, [apiBase, localMode, tick]);
 
   const retry = () => { setStatus("loading"); setTick((t) => t + 1); };
 
@@ -93,7 +98,7 @@ function ModelsPanel({ apiBase, onClose }) {
 
       {status === "ready" && (
         <>
-          <datalist id="installed-models">{installed.map((m) => <option key={m} value={m} />)}</datalist>
+          {localMode && <datalist id="installed-models">{installed.map((m) => <option key={m} value={m} />)}</datalist>}
           <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5">
             <label htmlFor="main-common-key" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-zinc-100"><KeyRound className="h-4 w-4 text-blue-400" aria-hidden="true" /> Main common API key</label>
             <div className="flex items-center gap-1">
@@ -103,6 +108,9 @@ function ModelsPanel({ apiBase, onClose }) {
             </div>
             <p className="mt-1.5 text-[11px] text-red-300">(Only used for single api key case)</p>
           </div>
+          {rows.length === 0 ? (
+            <p className="rounded-lg border border-zinc-800 bg-slate-950 p-3 text-xs text-zinc-400">No API models configured.</p>
+          ) : (
           <ul className="flex flex-col">
             {rows.map(({ role, default: def, custom }, i) => {
               const Icon = iconForRole(role);
@@ -118,8 +126,8 @@ function ModelsPanel({ apiBase, onClose }) {
                   </label>
                   <div className="flex items-center gap-1">
                     <select id={`m-${role}`} value={value} onChange={(e) => setDraft((d) => ({ ...d, [role]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none focus:border-blue-500">
-                      <option value="">Default{def ? ` (${def})` : ""}</option>
-                      {[...new Set([def, ...installed, value].filter(Boolean))].map((model) => <option key={model} value={model}>{model}</option>)}
+                      <option value="">{localMode && def ? `Local default (${def})` : "Use provider default"}</option>
+                      {[...new Set([(localMode ? def : ""), ...(localMode ? installed : []), value].filter(Boolean))].map((model) => <option key={model} value={model}>{model}</option>)}
                     </select>
                     <button
                       onClick={() => setDraft((d) => ({ ...d, [role]: "" }))} disabled={!value}
@@ -138,6 +146,7 @@ function ModelsPanel({ apiBase, onClose }) {
               );
             })}
           </ul>
+          )}
 
           {msg && <p role="status" className={`mt-3 text-xs ${msg.ok ? "text-emerald-400" : "text-red-400"}`}>{msg.text}</p>}
           <button

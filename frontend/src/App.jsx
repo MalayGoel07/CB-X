@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import serverBase from "./api/base";
-import localBase, { isLocalMode } from "./api/localBase";
+import localBase from "./api/localBase";
 import LocalSetup from "./components/LocalSetup";
 import HistoryPanel from "./components/HistoryPanel";
 import ModelsPanel from "./components/ModelsPanel";
@@ -56,6 +56,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLocal, setShowLocal] = useState(false);
+  const [executionMode, setExecutionMode] = useState("api");
   const [showCollection, setShowCollection] = useState(false);
   const [viewMessages, setViewMessages] = useState(null);
   const requestStartedAt = useRef(null);
@@ -77,7 +78,7 @@ function App() {
     setOutputFiles([]);
   };
 
-  const submit = async (prompt, sentAttachments, baseMessages, { clearInput }) => {
+  const submit = async (prompt, sentAttachments, baseMessages, { clearInput, mode = executionMode }) => {
     if (loading) return;
     const attachmentMetadata = sentAttachments.map(({ name, type }) => ({ name, type }));
     let chat = activeChat;
@@ -87,7 +88,7 @@ function App() {
       setChats((prev) => [...prev, chat]);
       setActiveChatId(chat.id);
     }
-    lastRequest.current = { prompt, files: sentAttachments, baseMessages, chatId: chat.id };
+    lastRequest.current = { prompt, files: sentAttachments, baseMessages, chatId: chat.id, mode };
     requestStartedAt.current = performance.now();
     setElapsedMs(0);
     setLoading(true);
@@ -103,7 +104,7 @@ function App() {
     }
     setAttachmentError("");
     try {
-      const run = isLocalMode() ? localBase : serverBase;
+      const run = mode === "local" ? localBase : serverBase;
       const { text: finalText, tokenCount, files = [] } = await run(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
@@ -151,14 +152,14 @@ function App() {
         ? "Analyze the attached image(s)."
         : "Review the attached file(s)."
     );
-    submit(prompt, attachments, history, { clearInput: true });
+    submit(prompt, attachments, history, { clearInput: true, mode: executionMode });
   };
 
   const rethink = () => {
     if (loading) return;
     const last = lastRequest.current;
     if (last && last.chatId === activeChatId) {
-      submit(last.prompt, last.files, last.baseMessages, { clearInput: false });
+      submit(last.prompt, last.files, last.baseMessages, { clearInput: false, mode: last.mode });
       return;
     }
     const lastReply = history[history.length - 1];
@@ -168,7 +169,7 @@ function App() {
       setAttachmentError("That message had attachments, which aren't saved. Attach the files again and send.");
       return;
     }
-    submit(lastPrompt.content, [], history.slice(0, -2), { clearInput: false });
+    submit(lastPrompt.content, [], history.slice(0, -2), { clearInput: false, mode: executionMode });
   };
 
   useEffect(() => {
@@ -252,6 +253,11 @@ function App() {
   const openHistory = () => { closePanels(); setShowHistory(true); setShowConversation(false); };
   const openCollection = () => { closePanels(); setShowCollection(true); };
   const openLocal = () => { closePanels(); setShowLocal(true); };
+  const chooseExecutionMode = (mode) => {
+    setExecutionMode(mode);
+    if (mode === "local") openLocal();
+    else openModels();
+  };
 
   const onNewChat = async () => {
     setThought("");
@@ -371,6 +377,8 @@ function App() {
               onAttachmentsChange={setAttachments}
               attachmentError={attachmentError}
               onAttachmentError={setAttachmentError}
+              executionMode={executionMode}
+              onExecutionModeChange={chooseExecutionMode}
             />
           </div>
         </div>

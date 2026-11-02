@@ -23,6 +23,8 @@ function InputBar({
   onAttachmentsChange,
   attachmentError,
   onAttachmentError,
+  executionMode,
+  onExecutionModeChange,
 }) {
   const fileInputRef = useRef(null);
   const textareaRef = useRef(null);
@@ -172,6 +174,18 @@ function InputBar({
           autoFocus
           className="min-w-0 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-5 text-white outline-none placeholder:text-zinc-500"
         />
+
+        <select
+          value={executionMode}
+          onChange={(e) => onExecutionModeChange(e.target.value)}
+          disabled={loading}
+          aria-label="Choose model source"
+          title="Choose API or local Ollama for this job"
+          className="h-9 shrink-0 rounded-lg border border-zinc-700 bg-slate-950 px-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 disabled:opacity-40"
+        >
+          <option value="api">API</option>
+          <option value="local">Local model</option>
+        </select>
 
         <button
           type="button"
