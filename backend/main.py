@@ -19,7 +19,14 @@ load_dotenv()
 frontend_url=os.getenv("frontend_url","http://localhost:5173")
 ACCESS_TOKEN_EXPIRE_MINUTES=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES"))
 app=FastAPI(title="Orch-7 API",version="0.0.1")
-app.add_middleware(CORSMiddleware,allow_origins=["http://localhost:5173",frontend_url],allow_credentials=True,allow_methods=["*"],allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,          # exact origin, no trailing slash, no path
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],            # needed for Authorization (JWT) and Content-Type
+    expose_headers=["*"],
+)
 
 class ChatRequest(BaseModel):
     message:str=Field(...,min_length=1)
