@@ -1,4 +1,19 @@
 @import "tailwindcss";
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+#root {
+  min-width: 0;
+}
+
 .strip {
   background: linear-gradient(
     to right,

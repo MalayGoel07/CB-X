@@ -125,7 +125,7 @@ export default function LocalSetup({ onClose }) {
   const ready = ROLES.every((role) => cfg[role]);
 
   return (
-    <div className="models-scrollbar z-50 flex w-[350px] flex-col overflow-y-auto border-l border-zinc-800 bg-slate-900 p-4">
+    <div className="models-scrollbar z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-x-hidden overflow-y-auto border-l border-zinc-800 bg-slate-900 p-4">
       <div className="mb-5 flex items-center justify-between">
         <span className="text-[18px] font-medium uppercase tracking-widest text-blue-500">Local mode</span>
         {onClose && (

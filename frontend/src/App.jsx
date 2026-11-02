@@ -299,7 +299,7 @@ function App() {
   };
 
   return (
-    <div className="app-root h-screen overflow-none bg-[#0a0f18] text-white flex overscroll-none">
+    <div className="app-root flex h-screen min-h-0 min-w-0 overflow-hidden overscroll-none bg-[#0a0f18] text-white">
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         {STRIPS.map(([cls, duration, delay], i) => (
           <div
@@ -323,10 +323,10 @@ function App() {
       {showModels && <ModelsPanel apiBase={API} onClose={() => setShowModels(false)} />}
       {showCollection && <CollectionPanel apiBase={API} onClose={() => setShowCollection(false)} />}
 
-      <div className="flex-1 min-h-0 min-w-0 flex flex-col items-center justify-center p-5 gap-4 z-50 overscroll-none">
+      <div className="z-50 flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden p-5 overscroll-none">
         <TopBar />
 
-        <div className="grid w-full max-w-[1000px] flex-1 min-h-0 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto] gap-x-4">
+        <div className="grid min-h-0 min-w-0 w-full max-w-[1000px] flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto] gap-x-4">
           <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
             <OutputBox
               output={output}
@@ -367,7 +367,7 @@ function App() {
           </div>
 
           {/* flex + justify-center puts the input on the output box's centre line. */}
-          <div className="col-start-1 row-start-3 flex justify-center pt-4">
+          <div className="col-start-1 row-start-3 flex min-w-0 justify-center pt-4">
             <InputBar
               input={input}
               onChange={setInput}

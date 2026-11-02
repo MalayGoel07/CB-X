@@ -207,7 +207,7 @@ function OutputBox({
     }`;
 
   return (
-    <div className="flex min-h-[200px] max-h-[900px] w-full flex-col self-stretch overflow-hidden rounded-[20px] bg-slate-900">      
+    <div className="flex min-h-0 max-h-[900px] w-full min-w-0 flex-col self-stretch overflow-hidden rounded-[20px] bg-slate-900">
     {(conversation || output) && (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-800 px-4 py-2">
           {conversation ? (

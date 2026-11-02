@@ -26,7 +26,7 @@ function HistoryPanel({ chats, activeChatId, onSelectChat, onDeleteChat, onClear
   });
 
   return (
-    <div className="z-50 flex w-[350px] flex-col border-r border-zinc-800 bg-slate-900 p-5 backdrop-blur-xl">
+    <div className="z-50 box-border flex h-screen w-[350px] max-w-[100vw] shrink-0 flex-col overflow-hidden border-r border-zinc-800 bg-slate-900 p-5 backdrop-blur-xl">
       <div className="flex items-center justify-between py-2">
         <span className="text-[18px] font-medium uppercase tracking-widest text-blue-500">Chats</span>
         <div className="flex items-center gap-1">
