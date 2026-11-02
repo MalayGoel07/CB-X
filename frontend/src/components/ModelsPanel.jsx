@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { X, Cpu, Route, Search, Code, PenLine, Sigma, Merge, RotateCw, RotateCcw } from "lucide-react";
+import { X, Cpu, Route, Search, Code, PenLine, Sigma, Merge, RotateCw, RotateCcw, KeyRound } from "lucide-react";
 
 const ROLE_ICONS = { router: Route, research: Search, cod: Code, writ: PenLine, math: Sigma, merg: Merge };
 const iconForRole = (role) => ROLE_ICONS[Object.keys(ROLE_ICONS).find((k) => String(role).toLowerCase().includes(k))] ?? Cpu;
 const toDraft = (list) => Object.fromEntries(list.map((r) => [r.role, r.custom ? r.model : ""]));
+const toKeyDraft = (list) => Object.fromEntries(list.map((r) => [r.role, r.key || ""]));
 
 const req = async (url, opts = {}) => {
   const r = await fetch(url, {
@@ -19,6 +20,11 @@ const req = async (url, opts = {}) => {
 function ModelsPanel({ apiBase, onClose }) {
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({}); // role -> text typed by the user, "" = default
+  const [keyDraft, setKeyDraft] = useState({});
+  const [commonKey, setCommonKey] = useState("");
+  const [commonProvider, setCommonProvider] = useState("openai");
+  const [providerDraft, setProviderDraft] = useState({});
+  const [savedCommonKey, setSavedCommonKey] = useState("");
   const [installed, setInstalled] = useState([]);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [tick, setTick] = useState(0);
@@ -30,7 +36,7 @@ function ModelsPanel({ apiBase, onClose }) {
     Promise.all([req(`${apiBase}/me/models`), req(`${apiBase}/models/installed`).catch(() => ({ models: [] }))])
       .then(([m, i]) => {
         if (off) return;
-        setRows(m.models); setDraft(toDraft(m.models)); setInstalled(i.models); setStatus("ready");
+        setRows(m.models); setDraft(toDraft(m.models)); setKeyDraft(toKeyDraft(m.models)); setProviderDraft(Object.fromEntries(m.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(m.common_key || ""); setCommonProvider(m.common_provider || "openai"); setSavedCommonKey(m.common_key || ""); setInstalled(i.models); setStatus("ready");
       })
       .catch((e) => { if (!off) { console.error("Failed to load models:", e); setStatus("error"); } });
     return () => { off = true; };
@@ -44,13 +50,15 @@ function ModelsPanel({ apiBase, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const dirty = rows.some((r) => (draft[r.role] ?? "").trim() !== (r.custom ? r.model : ""));
+  const hasApiKey = (role) => Boolean(commonKey.trim() || (keyDraft[role] ?? "").trim());
+  const dirty = rows.some((r) => (draft[r.role] ?? "").trim() !== (r.model || "") || (keyDraft[r.role] ?? "").trim() !== (r.key || "")) || commonKey.trim() !== savedCommonKey;
 
   const save = async () => {
     setSaving(true); setMsg(null);
     try {
-      const d = await req(`${apiBase}/me/models`, { method: "PUT", body: JSON.stringify({ models: draft }) });
-      setRows(d.models); setDraft(toDraft(d.models)); setMsg({ ok: true, text: "Saved." });
+      const keys = Object.fromEntries(rows.map((r) => [r.role, { key: keyDraft[r.role] || "", provider: providerDraft[r.role] || "openai" }]));
+      const d = await req(`${apiBase}/me/models`, { method: "PUT", body: JSON.stringify({ models: draft, keys, common_key: commonKey, common_provider: commonProvider }) });
+      setRows(d.models); setDraft(toDraft(d.models)); setKeyDraft(toKeyDraft(d.models)); setProviderDraft(Object.fromEntries(d.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(d.common_key || ""); setCommonProvider(d.common_provider || "openai"); setSavedCommonKey(d.common_key || ""); setMsg({ ok: true, text: "Saved." });
     } catch (e) {
       setMsg({ ok: false, text: e.message });
     } finally {
@@ -59,7 +67,7 @@ function ModelsPanel({ apiBase, onClose }) {
   };
 
   return (
-    <div className="z-50 flex w-[350px] flex-col overflow-y-auto border-r border-zinc-800 bg-slate-900 p-4">
+    <div className="models-scrollbar z-50 flex w-[350px] flex-col overflow-y-auto border-r border-zinc-800 bg-slate-900 p-4">
       <div className="mb-5 flex items-center justify-between">
         <span className="text-[18px] font-medium uppercase tracking-widest text-blue-500">Models</span>
         <button onClick={onClose} aria-label="Close models" className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400">
@@ -67,7 +75,7 @@ function ModelsPanel({ apiBase, onClose }) {
         </button>
       </div>
 
-      <p className="mb-3 text-xs text-zinc-400">Set the model for each role. Leave blank to use the default. Models must already be downloaded in Ollama.</p>
+      <p className="mb-3 text-xs text-zinc-400">Choose a model for each worker and optionally add its API key. Leave a model blank to use the default.</p>
 
       {status === "loading" && (
         <div className="space-y-3" aria-busy="true" aria-label="Loading models">
@@ -87,23 +95,33 @@ function ModelsPanel({ apiBase, onClose }) {
       {status === "ready" && (
         <>
           <datalist id="installed-models">{installed.map((m) => <option key={m} value={m} />)}</datalist>
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-2.5">
+            <label htmlFor="main-common-key" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-zinc-100"><KeyRound className="h-4 w-4 text-blue-400" aria-hidden="true" /> Main common API key</label>
+            <div className="flex items-center gap-1">
+              <select value={commonProvider} onChange={(e) => setCommonProvider(e.target.value)} className="rounded-lg border border-zinc-700 bg-slate-950 px-2 py-1.5 text-xs text-zinc-100">{["openai","openrouter","anthropic","google","grok"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
+              <input id="main-common-key" type="password" value={commonKey} placeholder="Optional shared key" onChange={(e) => setCommonKey(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500" />
+              <button onClick={() => setCommonKey("")} disabled={!commonKey} aria-label="Remove common API key" title="Remove key" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+            </div>
+            <p className="mt-1.5 text-[11px] text-red-300">(Only used for single api key case)</p>
+          </div>
           <ul className="flex flex-col">
             {rows.map(({ role, default: def, custom }, i) => {
               const Icon = iconForRole(role);
               const value = draft[role] ?? "";
+              const apiConfigured = hasApiKey(role);
               return (
                 <li key={role} className={`py-3 ${i < rows.length - 1 ? "border-b border-zinc-800" : ""}`}>
                   <label htmlFor={`m-${role}`} className="mb-1.5 flex items-center gap-2.5 text-sm font-medium text-zinc-100">
                     <Icon className="h-4 w-4 text-blue-400" aria-hidden="true" />
                     {role}
                     {custom && <span className="rounded bg-cyan-500/10 px-1.5 text-[10px] uppercase text-cyan-300">custom</span>}
+                    {apiConfigured && <span className="rounded bg-emerald-500/10 px-1.5 text-[10px] uppercase text-emerald-300">(Api)</span>}
                   </label>
                   <div className="flex items-center gap-1">
-                    <input
-                      id={`m-${role}`} list="installed-models" value={value} placeholder={def || "Not configured"}
-                      onChange={(e) => setDraft((d) => ({ ...d, [role]: e.target.value }))}
-                      className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500"
-                    />
+                    <select id={`m-${role}`} value={value} onChange={(e) => setDraft((d) => ({ ...d, [role]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none focus:border-blue-500">
+                      <option value="">Default{def ? ` (${def})` : ""}</option>
+                      {[...new Set([def, ...installed, value].filter(Boolean))].map((model) => <option key={model} value={model}>{model}</option>)}
+                    </select>
                     <button
                       onClick={() => setDraft((d) => ({ ...d, [role]: "" }))} disabled={!value}
                       aria-label={`Reset ${role} to default`} title="Reset to default"
@@ -111,6 +129,11 @@ function ModelsPanel({ apiBase, onClose }) {
                     >
                       <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                     </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1">
+                    <select value={providerDraft[role] || "openai"} onChange={(e) => setProviderDraft((d) => ({ ...d, [role]: e.target.value }))} className="rounded-lg border border-zinc-700 bg-slate-950 px-2 py-1.5 text-xs text-zinc-100">{["openai","openrouter","anthropic","google","grok"].map((p) => <option key={p} value={p}>{p}</option>)}</select>
+                    <input id={`k-${role}`} type="password" value={keyDraft[role] ?? ""} placeholder="Optional worker API key" onChange={(e) => setKeyDraft((d) => ({ ...d, [role]: e.target.value }))} className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-slate-950 px-2.5 py-1.5 font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-blue-500" />
+                    <button onClick={() => setKeyDraft((d) => ({ ...d, [role]: "" }))} disabled={!keyDraft[role]} aria-label={`Remove ${role} API key`} title="Remove key" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-400 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
                   </div>
                 </li>
               );

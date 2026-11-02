@@ -41,3 +41,29 @@
 .profile-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(#67e8f9, #3b82f6);
 }
+
+.models-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2563eb transparent;
+  scrollbar-gutter: stable;
+}
+
+.models-scrollbar::-webkit-scrollbar {
+  width: 7px;
+}
+
+.models-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 10px;
+}
+
+.models-scrollbar::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  background: linear-gradient(180deg, #22d3ee, #2563eb 60%, #7c3aed);
+  border: 2px solid #0f172a;
+  border-radius: 9999px;
+}
+
+.models-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #67e8f9, #3b82f6 60%, #a78bfa);
+}

@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse,Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel,Field,ValidationError
 import asyncio,json,os,uvicorn
-from db import users_collection,load_file,show_files,delete_file,file_name
+from db import users_collection,files_collection,load_file,show_files,delete_file,file_name
 from urllib.parse import quote
 from doc_agent import MIME
 from general import M_CODER,M_MATH,M_MERGER,M_RESEARCH,M_ROUTER,M_WRITER,Message,orchestrate,read_file_content,DEFAULT_MODELS,installed_models,norm_model
@@ -102,8 +102,8 @@ async def chat(message:str=Form(...),history:str=Form("[]"),files:List[UploadFil
 
     file_context="\n\n".join(document_parts) or None
     prompt=message.strip() or "Analyze the attached file(s)."
-    user_doc=users_collection.find_one({"username":current_user.username},{"models":1}) or {}
-    return StreamingResponse(orchestrate(prompt,history_messages,image_data or None,file_context,current_user.system_prompt,current_user.username,user_doc.get("models") or None),media_type="text/event-stream")
+    user_doc=users_collection.find_one({"username":current_user.username},{"models":1,"model_keys":1}) or {}
+    return StreamingResponse(orchestrate(prompt,history_messages,image_data or None,file_context,current_user.system_prompt,current_user.username,user_doc.get("models") or None,user_doc.get("model_keys") or None),media_type="text/event-stream")
 
 @app.get("/history")
 async def get_history(current_user:Annotated[User,Depends(get_current_active_user)]):
@@ -151,8 +151,17 @@ async def delete_user_file(file_id:str,current_user:Annotated[User,Depends(get_c
     if not delete_file(file_id,current_user.username): raise HTTPException(404,"File not found")
     return {"message":"File deleted"}
 
+@app.delete("/me")
+async def delete_me(current_user:Annotated[User,Depends(get_current_active_user)]):
+    files_collection.delete_many({"owner":current_user.username})
+    users_collection.delete_one({"username":current_user.username})
+    return {"message":"Account deleted"}
+
 class ModelsUpdate(BaseModel):
     models:dict[str,str]
+    keys:dict[str,dict[str,str]|str|None]=Field(default_factory=dict)
+    common_key:str|None=None
+    common_provider:str="openai"
 
 @app.get("/models/installed")
 async def list_installed(current_user:Annotated[User,Depends(get_current_active_user)]):
@@ -161,21 +170,37 @@ async def list_installed(current_user:Annotated[User,Depends(get_current_active_
 
 @app.get("/me/models")
 async def get_my_models(current_user:Annotated[User,Depends(get_current_active_user)]):
-    user=users_collection.find_one({"username":current_user.username},{"models":1}) or {}
+    user=users_collection.find_one({"username":current_user.username},{"models":1,"model_keys":1}) or {}
     custom=user.get("models",{})
-    return {"models":[{"role":r,"model":custom.get(r) or d or "","default":d or "","custom":bool(custom.get(r))} for r,d in DEFAULT_MODELS.items()]}
+    keys=user.get("model_keys",{})
+    def config(role):
+        value=keys.get(role,"")
+        return value if isinstance(value,dict) else {"key":value,"provider":"openai"}
+    common=config("common")
+    return {"models":[{"role":r,"model":custom.get(r) or d or "","default":d or "","custom":bool(custom.get(r)),"key":config(r).get("key",""),"provider":config(r).get("provider","openai"),"api":bool(config(r).get("key") or common.get("key"))} for r,d in DEFAULT_MODELS.items()],"common_key":common.get("key",""),"common_provider":common.get("provider","openai")}
 
 @app.put("/me/models")
 async def set_my_models(data:ModelsUpdate,current_user:Annotated[User,Depends(get_current_active_user)]):
     bad=[r for r in data.models if r not in DEFAULT_MODELS]
     if bad: raise HTTPException(400,f"Unknown role: {bad[0]}")
-    clean={r:norm_model(m) for r,m in data.models.items() if m.strip()}
-    if clean:
+    clean_keys={}
+    for role,value in data.keys.items():
+        if role not in DEFAULT_MODELS or not value:
+            continue
+        if isinstance(value,str):
+            if value.strip(): clean_keys[role]={"key":value.strip(),"provider":"openai"}
+        elif value.get("key","").strip():
+            clean_keys[role]={"key":value["key"].strip(),"provider":value.get("provider","openai")}
+    if data.common_key and data.common_key.strip():
+        clean_keys["common"]={"key":data.common_key.strip(),"provider":data.common_provider}
+    clean={r:(m.strip() if clean_keys.get(r) or clean_keys.get("common") else norm_model(m)) for r,m in data.models.items() if m.strip()}
+    local_models={m for r,m in clean.items() if not clean_keys.get(r) and not clean_keys.get("common")}
+    if local_models:
         try: have=await installed_models()
         except ConnectionError: raise HTTPException(503,"Can't reach Ollama. Start it with `ollama serve`.")
-        missing=sorted({m for m in clean.values() if m not in have})
+        missing=sorted(local_models-have)
         if missing: raise HTTPException(400,f"Not installed: {', '.join(missing)}. Please download all the models you want to use first (ollama pull <name>).")
-    users_collection.update_one({"username":current_user.username},{"$set":{"models":clean}})
+    users_collection.update_one({"username":current_user.username},{"$set":{"models":clean,"model_keys":clean_keys}})
     return await get_my_models(current_user)
 
 if __name__=="__main__":

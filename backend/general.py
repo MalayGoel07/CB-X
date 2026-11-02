@@ -1,9 +1,10 @@
-import asyncio, json, os, re
+import ast, asyncio, json, os, re
 from io import BytesIO
 from pathlib import Path
 from typing import AsyncIterator, List, Literal, Optional
 from contextvars import ContextVar
 import numpy as np
+import httpx
 from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -24,6 +25,7 @@ M_ROUTER, M_RESEARCH, M_WRITER, M_CODER, M_MATH, M_IMAGE, M_EMBED, M_MERGER = (e
 DEFAULT_MODELS = {"Router": M_ROUTER, "Research": M_RESEARCH, "Writer": M_WRITER, "Coder": M_CODER, "Maths": M_MATH, "Merger": M_MERGER}
 ROLE_OF = {"Router": "Router", "Researcher": "Research", "Writer": "Writer", "DocWriter": "Writer", "CoderAgent": "Coder", "Maths": "Maths", "Merger": "Merger"}
 model_overrides: ContextVar[dict] = ContextVar("model_overrides", default={})
+api_keys: ContextVar[dict] = ContextVar("api_keys", default={})
 
 def norm_model(name: str) -> str:
     name = name.strip()
@@ -87,6 +89,128 @@ class BaseWorker:
     def _model(self) -> Optional[str]:
         return model_overrides.get().get(ROLE_OF.get(self.name, "")) or self.model
 
+    def _api_config(self) -> tuple[Optional[str], str]:
+        role = ROLE_OF.get(self.name, "")
+        keys = api_keys.get()
+        value = keys.get(role) or keys.get("common")
+        if isinstance(value, dict):
+            return value.get("key"), value.get("provider", "openai")
+        return value, "openai"
+
+    def _api_model(self, provider: str) -> str:
+        model = self._model() or ""
+        if ":" not in model:
+            return model
+        defaults = {
+            "openai": "gpt-4o-mini",
+            "openrouter": "openai/gpt-4o-mini",
+            "anthropic": "claude-3-5-sonnet-latest",
+            "google": env("GOOGLE_API_MODEL", "gemini-2.5-flash"),
+            "grok": "grok-3-mini",
+        }
+        return defaults[provider]
+
+    def _client(self) -> AsyncClient:
+        key, _ = self._api_config()
+        return AsyncClient(
+            host="http://127.0.0.1:11434",
+            headers={"Authorization": f"Bearer {key}"} if key else None,
+        )
+
+    def _api_request(self, messages: list[dict], stream: bool, model_override: Optional[str] = None) -> tuple[str, dict, dict]:
+        key, provider = self._api_config()
+        if not key:
+            return "", {}, {}
+        model = model_override or self._api_model(provider)
+        if provider in {"openai", "openrouter", "grok"}:
+            urls = {"openai": "https://api.openai.com/v1/chat/completions", "openrouter": "https://openrouter.ai/api/v1/chat/completions", "grok": "https://api.x.ai/v1/chat/completions"}
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {"model": model, "messages": messages, "stream": stream}
+            return urls[provider], headers, payload
+        if provider == "anthropic":
+            system = next((m["content"] for m in messages if m["role"] == "system"), "")
+            payload = {"model": model, "max_tokens": self.num_predict, "system": system, "messages": [m for m in messages if m["role"] != "system"], "stream": stream}
+            return "https://api.anthropic.com/v1/messages", {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}, payload
+        if provider == "google":
+            contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in messages if m["role"] != "system"]
+            system = next((m["content"] for m in messages if m["role"] == "system"), "")
+            payload = {"contents": contents, "systemInstruction": {"parts": [{"text": system}]}, "generationConfig": {"temperature": self.temperature, "maxOutputTokens": self.num_predict}}
+            suffix = "&alt=sse" if stream else ""
+            return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{'streamGenerateContent' if stream else 'generateContent'}?key={key}{suffix}", {"Content-Type": "application/json"}, payload
+        raise ValueError(f"Unsupported API provider: {provider}")
+
+    async def _google_available_model(self) -> Optional[str]:
+        key, provider = self._api_config()
+        if provider != "google" or not key:
+            return None
+        async with httpx.AsyncClient(timeout=30) as api_client:
+            response = await api_client.get(
+                "https://generativelanguage.googleapis.com/v1beta/models",
+                params={"key": key},
+            )
+        response.raise_for_status()
+        models = response.json().get("models", [])
+        preferred = ("flash", "pro")
+        for preference in preferred:
+            for model in models:
+                name = model.get("name", "")
+                methods = model.get("supportedGenerationMethods", [])
+                if preference in name.lower() and "generateContent" in methods:
+                    return name.removeprefix("models/")
+        return None
+
+    async def _api_run(self, messages: list[dict]) -> tuple[str, Optional[int]]:
+        url, headers, payload = self._api_request(messages, False)
+        async with httpx.AsyncClient(timeout=120) as api_client:
+            response = await api_client.post(url, headers=headers, json=payload)
+        if response.status_code == 404 and self._api_config()[1] == "google":
+            model = await self._google_available_model()
+            if model:
+                url, headers, payload = self._api_request(messages, False, model)
+                async with httpx.AsyncClient(timeout=120) as retry_client:
+                    response = await retry_client.post(url, headers=headers, json=payload)
+            if response.status_code == 404:
+                raise ValueError(f"Google model '{payload.get('model')}' was not found or is unavailable for this API key.")
+        response.raise_for_status()
+        data = response.json()
+        if payload.get("model", "").startswith("claude") or "content" in data and isinstance(data["content"], list):
+            return "".join(part.get("text", "") for part in data.get("content", [])), data.get("usage", {}).get("output_tokens")
+        if "candidates" in data:
+            return "".join(part.get("text", "") for part in data["candidates"][0]["content"]["parts"]), data.get("usageMetadata", {}).get("candidatesTokenCount")
+        return data["choices"][0]["message"].get("content", ""), data.get("usage", {}).get("completion_tokens")
+
+    async def _api_stream(self, messages: list[dict]):
+        url, headers, payload = self._api_request(messages, True)
+        if self._api_config()[1] == "google":
+            model = await self._google_available_model()
+            if model:
+                url, headers, payload = self._api_request(messages, True, model)
+        async with httpx.AsyncClient(timeout=None) as api_client:
+            async with api_client.stream("POST", url, headers=headers, json=payload) as response:
+                if response.status_code == 404 and self._api_config()[1] == "google":
+                    raise ValueError(f"Google model '{payload.get('model')}' was not found or is unavailable for this API key.")
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or line.startswith("event:"):
+                        continue
+                    raw = line[5:].strip() if line.startswith("data:") else line
+                    if raw == "[DONE]":
+                        continue
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        # Providers may send comments, blank keep-alives, or non-JSON
+                        # diagnostic lines alongside the stream.
+                        continue
+                    if "delta" in data.get("choices", [{}])[0]:
+                        text = data["choices"][0]["delta"].get("content") or ""
+                    elif data.get("type") == "content_block_delta":
+                        text = data.get("delta", {}).get("text", "")
+                    else:
+                        text = "".join(p.get("text", "") for p in data.get("candidates", [{}])[0].get("content", {}).get("parts", []))
+                    if text:
+                        yield text, None
+
     def _system(self, suffix: Optional[str]) -> str:
         s = (suffix or "").strip()
         return f"{self.system_prompt.rstrip()}\n\n{s}" if s else self.system_prompt
@@ -116,8 +240,10 @@ class BaseWorker:
 
     async def run(self, task: str, history: Optional[List[Message]] = None, images: Optional[List[bytes]] = None, system_prompt_suffix: Optional[str] = None) -> tuple[str, Optional[int]]:
         msgs = self._messages(task, history, images, system_prompt_suffix)
+        if self._api_config()[0]:
+            return await self._api_run(msgs)
         async with ollama_semaphore:
-            r = await client.chat(**self._kwargs(msgs))
+            r = await self._client().chat(**self._kwargs(msgs))
         return r.message.content or "", r.eval_count
 
     @staticmethod
@@ -126,9 +252,13 @@ class BaseWorker:
 
     async def stream(self, task, history=None, images=None, system_prompt_suffix=None):
         msgs = self._messages(task, history, images, system_prompt_suffix)
+        if self._api_config()[0]:
+            async for chunk in self._api_stream(msgs):
+                yield chunk
+            return
         seen = ""
         async with ollama_semaphore:
-            async for r in await client.chat(**self._kwargs(msgs, stream=True)):
+            async for r in await self._client().chat(**self._kwargs(msgs, stream=True)):
                 chunk = r.message.content or ""
                 seen += chunk
                 yield chunk, r.eval_count
@@ -366,7 +496,14 @@ def parse_router_output(raw: str) -> list[str]:
     start, end = cleaned.find("["), cleaned.rfind("]")
     if start == -1 or end < start:
         raise ValueError("No valid JSON array found")
-    parsed = json.loads(cleaned[start:end + 1])
+    candidate = cleaned[start:end + 1]
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        try:
+            parsed = ast.literal_eval(candidate)
+        except (ValueError, SyntaxError) as error:
+            raise ValueError("Router returned invalid JSON") from error
     if not isinstance(parsed, list) or not all(isinstance(x, str) for x in parsed):
         raise ValueError("Expected a JSON array of strings")
     return parsed
@@ -406,8 +543,9 @@ async def make_document(fmt: str, message: str, history, file_context, analysis,
     yield sse_event(f"[FinalChunk]I've created **{name}**. Use the download link below.")
 
 
-async def orchestrate(message: str, history: List[Message], images: Optional[List[bytes]] = None, file_context: Optional[str] = None, system_prompt: Optional[str] = None, owner: str = "", models: Optional[dict] = None):
+async def orchestrate(message: str, history: List[Message], images: Optional[List[bytes]] = None, file_context: Optional[str] = None, system_prompt: Optional[str] = None, owner: str = "", models: Optional[dict] = None, keys: Optional[dict] = None):
     model_overrides.set(models or {})
+    api_keys.set(keys or {})
     sfx, analysis = system_prompt, ""
     try:
         if images:

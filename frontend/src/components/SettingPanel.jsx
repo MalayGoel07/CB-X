@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { LogOut, Trash2 } from "lucide-react";
 import {
   FONT_MIN,
   FONT_MAX,
@@ -16,6 +18,7 @@ const THEMES = [
 ];
 
 function SettingPanel({ onClose }) {
+  const navigate = useNavigate();
   const [theme, setThemeState] = useState(getStoredTheme);
   const [scale, setScaleState] = useState(getStoredFontScale);
 
@@ -32,6 +35,25 @@ function SettingPanel({ onClose }) {
   const reset = () => {
     chooseTheme("dark");
     chooseScale(1);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("token");
+    navigate("/");
+  };
+
+  const deleteAccount = async () => {
+    if (!window.confirm("Delete your account and all stored files? This cannot be undone.")) return;
+    const response = await fetch("http://localhost:8000/me", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    });
+    if (!response.ok) {
+      window.alert("Unable to delete your account. Please try again.");
+      return;
+    }
+    localStorage.removeItem("token");
+    navigate("/");
   };
 
   const option = (active) =>
@@ -113,6 +135,16 @@ function SettingPanel({ onClose }) {
           Reset to defaults
         </button>
       </div>
+
+      <section className="space-y-2 border-t border-zinc-800 px-1 py-4" aria-labelledby="account-heading">
+        <h2 id="account-heading" className="mb-3 text-sm font-medium text-zinc-100">Account</h2>
+        <button onClick={logout} className="flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 transition-colors hover:border-blue-500">
+          <LogOut className="h-4 w-4" aria-hidden="true" /> Log out
+        </button>
+        <button onClick={deleteAccount} className="flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-red-500/60 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/10">
+          <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete account
+        </button>
+      </section>
     </div>
   );
 }

@@ -280,7 +280,11 @@ Key environment variables:
 ### Switching Models
 
 - Click the **Models** button to see available AI models
-- Select a different model to switch
+- Select a different model from the worker dropdown to switch
+- Add a worker-specific API key, or use **Main common API key** when sharing one key across workers
+- Choose OpenAI, OpenRouter, Anthropic, Google, or Grok/xAI for each key
+- API keys route workers through the selected provider instead of local Ollama; local model tags automatically use provider defaults
+- Use the red remove-key button beside any key field to clear it
 - The change applies to subsequent messages
 
 ---
@@ -302,10 +306,13 @@ Key environment variables:
 ### Models
 - `GET /models` - List available AI models
 - `GET /models/{model_id}` - Get model details
+- `GET /me/models` - Get the signed-in user's model and API-key settings
+- `PUT /me/models` - Save per-worker models and API keys
 
 ### User Profile
 - `GET /profile` - Get user profile information
 - `PUT /profile` - Update user profile
+- `DELETE /me` - Delete the signed-in account and owned files
 
 ---
 
