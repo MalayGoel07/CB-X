@@ -15,6 +15,7 @@ import CollectionPanel from "./components/CollectionPanel";
 import Tour from "./components/Tour.jsx";
 import { mainSteps, localSteps } from "./components/tours.jsx";
 import { API_BASE as API } from "./api/config";
+import { authHeaders, handleUnauthorized } from "./api/auth";
 
 const STRIPS = [
   ["h-px top-[20%]", "2.8s"],
@@ -31,18 +32,20 @@ const newChatObj = () => ({ id: crypto.randomUUID(), title: "New chat", messages
 const saveChats = async (chats) => {
   const response = await fetch(`${API}/chats`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ chats }),
   });
+  if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
   if (!response.ok) throw new Error(`Failed to save chats: ${response.status}`);
 };
 
 const markTutorialDone = async () => {
   const response = await fetch(`${API}/me/tutorial`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+    headers: authHeaders(),
     keepalive: true,
   });
+  if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
   if (!response.ok) throw new Error(`Failed to save tutorial status: ${response.status}`);
 };
 
@@ -195,8 +198,9 @@ function App() {
 
   useEffect(() => {
     if (!hasToken()) return;
-    fetch(`${API}/chats`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
+    fetch(`${API}/chats`, { headers: authHeaders() })
       .then((response) => {
+        if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
         if (!response.ok) throw new Error(`Failed to load chats: ${response.status}`);
         return response.json();
       })

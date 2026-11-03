@@ -1,4 +1,5 @@
 import { API_BASE, LS } from "./config";
+import { authHeaders, handleUnauthorized } from "./auth";
 
 const ROLES = ["research", "writer", "coder", "maths"];
 const TEXT_EXT = /\.(txt|md|py|js|json|csv|html|css)$/i;
@@ -155,12 +156,12 @@ export default async function localBase(input, onchunk, history = [], attachment
   try {
     const response = await fetch(`${API_BASE}/documents`, {
       method: "POST",
-      headers: {
+      headers: authHeaders({
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
+      }),
       body: JSON.stringify({ message: input, markdown: text }),
     });
+    if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
     if (!response.ok) throw new Error(`Document service HTTP ${response.status}`);
     const data = await response.json();
     if (data.file) files = [data.file];

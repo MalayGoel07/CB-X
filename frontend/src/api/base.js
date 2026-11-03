@@ -1,17 +1,18 @@
 import { API_BASE as API_BASE_URL } from "./config";
+import { authHeaders, handleUnauthorized } from "./auth";
 
 async function base(input, onchunk, history = [], attachments = []) {
-    const token = localStorage.getItem("token");
     const body = new FormData();
     body.append("message", input);
     body.append("history", JSON.stringify(history));
     attachments.forEach((file) => body.append("files", file));
     const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
-        headers: {"Authorization": `Bearer ${token}`},
+        headers: authHeaders(),
         body
     });
 
+    if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     if (!response.body) throw new Error("The server returned no response stream.");
 
