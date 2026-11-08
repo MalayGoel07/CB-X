@@ -16,7 +16,8 @@ import Tour from "./components/Tour.jsx";
 import { mainSteps, localSteps } from "./components/tours.jsx";
 import { API_BASE as API } from "./api/config";
 import { authHeaders, handleUnauthorized } from "./api/auth";
-
+import useChats, { newChatObj } from "./hooks/useChats";
+import { ToastProvider } from "./components/ui";
 const STRIPS = [
   ["h-px top-[20%]", "2.8s"],
   ["h-[3px] top-[20%] blur-sm opacity-50", "2.8s"],
@@ -25,19 +26,8 @@ const STRIPS = [
   ["h-px top-[78%] opacity-30", "4s", "-2.8s"],
 ];
 
-const hasToken = () => !!localStorage.getItem("token");
 const latestReply = (chat) => [...(chat?.messages ?? [])].reverse().find((m) => m.role === "assistant");
-const newChatObj = () => ({ id: crypto.randomUUID(), title: "New chat", messages: [] });
 
-const saveChats = async (chats) => {
-  const response = await fetch(`${API}/chats`, {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ chats }),
-  });
-  if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
-  if (!response.ok) throw new Error(`Failed to save chats: ${response.status}`);
-};
 
 const markTutorialDone = async () => {
   const response = await fetch(`${API}/me/tutorial`, {
@@ -60,10 +50,6 @@ function App() {
   const [attachmentError, setAttachmentError] = useState("");
   const [loading, setLoading] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [chats, setChats] = useState([]);
-  const [activeChatId, setActiveChatId] = useState(null);
-  const [chatsReady, setChatsReady] = useState(false);
-  const [tutorialDone, setTutorialDone] = useState(null);
   const [thought, setThought] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
@@ -76,11 +62,15 @@ function App() {
   const [tour, setTour] = useState(null);
   const [viewMessages, setViewMessages] = useState(null);
   const requestStartedAt = useRef(null);
-  const historyLoaded = useRef(false);
-  const skipNextHistorySave = useRef(false);
   const lastRequest = useRef(null);
+  const abortRef = useRef(null);
+  const {
+  chats, setChats, activeChatId, setActiveChatId, ready: chatsReady,
+  tutorialDone, setTutorialDone, syncError, startChat, renameChat, removeChat, clearChats,
+} = useChats({ onLoaded: (selected) => showLatest(selected) });
   const activeChat = chats.find((chat) => chat.id === activeChatId);
   const history = activeChat?.messages ?? [];
+  const backendStatus = syncError ? "offline" : chatsReady ? "online" : "connecting";
   const showLatest = (chat) => {
     const m = latestReply(chat);
     setOutput(m?.content ?? "");
@@ -119,12 +109,14 @@ function App() {
       setAttachments([]);
     }
     setAttachmentError("");
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const run = mode === "local" ? localBase : serverBase;
       const { text: finalText, tokenCount, files = [] } = await run(prompt, (transcript, streamedFinal) => {
         setThought(transcript);
         if (streamedFinal) setOutput(streamedFinal);
-      }, baseMessages, sentAttachments);
+      }, baseMessages, sentAttachments, controller.signal);
       setOutput(finalText);
       setOutputTokenCount(tokenCount);
       setOutputFiles(files);
@@ -132,6 +124,8 @@ function App() {
         const updatedChat = {
           ...chat,
           title: baseMessages.length === 0 ? prompt.slice(0, 60) : chat.title,
+          created: chat.created ?? Date.now(),
+          updated: Date.now(),
           messages: [
             ...baseMessages,
             { role: "user", content: prompt, attachments: attachmentMetadata },
@@ -143,13 +137,24 @@ function App() {
           : [...prev, updatedChat];
       });
     } catch (error) {
-      console.error("Chat request failed:", error);
-      setOutput(`Unable to get a response: ${error instanceof Error ? error.message : "Unknown error"}`);
-      if (clearInput) {
-        setInput(prompt);
-        setAttachments(sentAttachments);
+      if (error?.name === "AbortError") {
+        // Stopped by the user: nothing was saved, so put the prompt back and show the previous reply.
+        if (clearInput) {
+          setInput(prompt);
+          setAttachments(sentAttachments);
+        }
+        showLatest({ ...chat, messages: baseMessages });
+        setThought("");
+      } else {
+        console.error("Chat request failed:", error);
+        setOutput(`Unable to get a response: ${error instanceof Error ? error.message : "Unknown error"}`);
+        if (clearInput) {
+          setInput(prompt);
+          setAttachments(sentAttachments);
+        }
       }
     } finally {
+      abortRef.current = null;
       if (requestStartedAt.current !== null) {
         setElapsedMs(performance.now() - requestStartedAt.current);
         requestStartedAt.current = null;
@@ -188,6 +193,8 @@ function App() {
     submit(lastPrompt.content, [], history.slice(0, -2), { clearInput: false, mode: executionMode });
   };
 
+  const stop = () => abortRef.current?.abort();
+
   useEffect(() => {
     if (!loading || requestStartedAt.current === null) return;
     const id = setInterval(() => {
@@ -197,70 +204,35 @@ function App() {
   }, [loading]);
 
   useEffect(() => {
-    if (!hasToken()) return;
-    fetch(`${API}/chats`, { headers: authHeaders() })
-      .then((response) => {
-        if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
-        if (!response.ok) throw new Error(`Failed to load chats: ${response.status}`);
-        return response.json();
-      })
-      .then((data) => {
-        const loaded = data.chats || [];
-        const selected = loaded[loaded.length - 1];
-        skipNextHistorySave.current = true;
-        historyLoaded.current = true;
-        setTutorialDone(Boolean(data.tutorial_done));
-        setChatsReady(true);
-        setChats(loaded);
-        if (selected) {
-          setActiveChatId(selected.id);
-          showLatest(selected);
-        }
-      })
-      .catch((error) => console.error("Failed to load chats:", error));
-  }, []);
-
-  useEffect(() => {
-    if (!hasToken() || !historyLoaded.current) return;
-    if (skipNextHistorySave.current) {
-      skipNextHistorySave.current = false;
-      return;
-    }
-    saveChats(chats).catch((error) => console.error("Failed to save chats:", error));
-  }, [chats]);
-
-  useEffect(() => {
     if (!chatsReady || tutorialDone !== false) return undefined;
     const id = setTimeout(() => setTour("main"), 0);
     return () => clearTimeout(id);
   }, [chatsReady, tutorialDone]);
 
-  const clearChat = async () => {
-    skipNextHistorySave.current = true;
+  const clearChat = () => {
     lastRequest.current = null;
-    setChats([]);
-    setActiveChatId(null);
+    clearChats();
     setInput("");
     resetOutput();
     setThought("");
-    if (!hasToken()) return;
-    try {
-      await saveChats([]);
-    } catch (error) {
-      console.error("Failed to clear chats:", error);
-    }
   };
-
+  
   const deleteChat = (chatId) => {
-    const remaining = chats.filter((chat) => chat.id !== chatId);
-    setChats(remaining);
+    const next = removeChat(chatId);
     if (activeChatId !== chatId) return;
-    const nextChat = remaining[remaining.length - 1];
-    setActiveChatId(nextChat?.id ?? null);
     setInput("");
     setThought("");
     setShowConversation(false);
-    showLatest(nextChat);
+    showLatest(next);
+  };
+  
+  const onNewChat = () => {
+    setThought("");
+    setShowConversation(false);
+    setInput("");
+    resetOutput();
+    setShowHistory(false);
+    startChat();
   };
 
   const closePanels = () => {
@@ -293,29 +265,6 @@ function App() {
     });
   };
 
-  const onNewChat = async () => {
-    setThought("");
-    setShowConversation(false);
-    setInput("");
-    resetOutput();
-    setShowHistory(false);
-    const emptyChat = [...chats].reverse().find((chat) => chat.messages.length === 0);
-    if (emptyChat) {
-      setActiveChatId(emptyChat.id);
-      return;
-    }
-    const newChat = newChatObj();
-    skipNextHistorySave.current = true;
-    setChats((prev) => [...prev, newChat]);
-    setActiveChatId(newChat.id);
-    if (!hasToken()) return;
-    try {
-      await saveChats([...chats, newChat]);
-    } catch (error) {
-      console.error("Failed to create a new chat:", error);
-    }
-  };
-
   const selectChat = (chatId) => {
     const selected = chats.find((chat) => chat.id === chatId);
     if (!selected) return;
@@ -331,6 +280,10 @@ function App() {
     setShowConversation(false);
     setShowHistory(true);
   };
+
+  const activePanel =
+    showHistory ? "History" : showModels ? "Models" : showProfile ? "Profile"
+    : showSettings ? "Settings" : showCollection ? "Collection" : showLocal ? "Local Ollama" : null;
 
   return (
     <div className="app-root flex h-screen min-h-0 min-w-0 overflow-hidden overscroll-none bg-[#0a0f18] text-white">
@@ -358,7 +311,7 @@ function App() {
       {showCollection && <CollectionPanel apiBase={API} onClose={() => setShowCollection(false)} />}
 
       <div className="app-main z-50 flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden p-5 overscroll-none">
-        <TopBar />
+        <TopBar status={backendStatus} detail={syncError} />
 
         <div className="app-grid grid min-h-0 min-w-0 w-full max-w-[1000px] flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto] gap-x-4">
           <div className="col-start-1 row-start-1 flex min-h-0 flex-col">
@@ -388,6 +341,8 @@ function App() {
               onSettings={openSettings}
               onLocal={openLocal}
               onCollection={openCollection}
+              active={activePanel}
+              badges={{ History: chats.filter((c) => c.messages.length > 0).length }}
               loading={loading || !chatsReady}
             />
           </div>
@@ -406,6 +361,7 @@ function App() {
               input={input}
               onChange={setInput}
               onSend={send}
+              onStop={stop}
               loading={loading}
               attachments={attachments}
               onAttachmentsChange={setAttachments}
@@ -430,4 +386,10 @@ function App() {
   );
 }
 
-export default App;
+export default function AppWithToasts() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
+  );
+}

@@ -14,7 +14,7 @@ body {
   min-width: 0;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   body {
     overflow: hidden;
   }
@@ -74,7 +74,7 @@ body {
     flex: 1 1 auto;
   }
 
-  .input-bar button:last-child {
+  .input-bar > div:last-child > button:last-child {
     order: 3;
     flex: 1 1 auto;
   }
@@ -156,4 +156,8 @@ body {
 
 .models-scrollbar::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #67e8f9, #3b82f6 60%, #a78bfa);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .strip { animation: none; }
 }

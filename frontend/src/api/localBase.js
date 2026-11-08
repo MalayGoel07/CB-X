@@ -52,7 +52,8 @@ async function chat({ model, messages, format, onToken, signal, think, options }
       body: JSON.stringify({ model, messages, format, stream: true, think, options }),
       signal,
     });
-  } catch {
+  } catch (e) {
+    if (e?.name === "AbortError") throw e;
     throw new Error(
       "Can't reach Ollama. Is it running, and does OLLAMA_ORIGINS include this site? (open Local mode setup)"
     );
@@ -89,7 +90,7 @@ const ROUTER_PROMPT =
   '"maths" (calculations, proofs, equations). Reply ONLY with JSON: {"role":"<role>"}';
 
 // Same signature and return shape as api/base.js
-export default async function localBase(input, onchunk, history = [], attachments = []) {
+export default async function localBase(input, onchunk, history = [], attachments = [], signal) {
   const cfg = getCfg();
   if (!cfg.router) throw new Error("Pick your local models first (Local mode setup).");
 
@@ -118,6 +119,7 @@ export default async function localBase(input, onchunk, history = [], attachment
   try {
     const routed = await chat({
       model: cfg.router,
+      signal,
       format: "json",
       think: false,
       options: { num_predict: 64, temperature: 0 },
@@ -128,7 +130,7 @@ export default async function localBase(input, onchunk, history = [], attachment
     });
     role = JSON.parse(routed.text).role;
   } catch (e) {
-    if (String(e.message).startsWith("Can't reach")) throw e;
+    if (e?.name === "AbortError" || String(e.message).startsWith("Can't reach")) throw e;
   }
   if (!ROLES.includes(role)) role = "writer";
   const model = cfg[role] || cfg.router;
@@ -149,6 +151,7 @@ export default async function localBase(input, onchunk, history = [], attachment
   const { text, tokens } = await chat({
     model,
     messages,
+    signal,
     onToken: (_t, full) => onchunk?.(transcript, full),
   });
   if (!text.trim()) throw new Error("The model returned an empty answer.");
@@ -160,6 +163,7 @@ export default async function localBase(input, onchunk, history = [], attachment
         "Content-Type": "application/json",
       }),
       body: JSON.stringify({ message: input, markdown: text }),
+      signal,
     });
     if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
     if (!response.ok) throw new Error(`Document service HTTP ${response.status}`);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X, Cpu, Route, Search, Code, PenLine, Sigma, Merge, RotateCw, RotateCcw, KeyRound } from "lucide-react";
 import { isLocalMode, listLocalModels } from "../api/localBase";
+import { useToast } from "./ui";
 
 const ROLE_ICONS = { router: Route, research: Search, cod: Code, writ: PenLine, math: Sigma, merg: Merge };
 const iconForRole = (role) => ROLE_ICONS[Object.keys(ROLE_ICONS).find((k) => String(role).toLowerCase().includes(k))] ?? Cpu;
@@ -19,6 +20,7 @@ const req = async (url, opts = {}) => {
 };
 
 function ModelsPanel({ apiBase, onClose }) {
+  const toast = useToast();
   const localMode = isLocalMode();
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({}); // role -> text typed by the user, "" = default
@@ -63,7 +65,7 @@ function ModelsPanel({ apiBase, onClose }) {
     try {
       const keys = Object.fromEntries(rows.map((r) => [r.role, { key: keyDraft[r.role] || "", provider: providerDraft[r.role] || "openai" }]));
       const d = await req(`${apiBase}/me/models`, { method: "PUT", body: JSON.stringify({ models: draft, keys, common_key: commonKey, common_provider: commonProvider }) });
-      setRows(d.models); setDraft(toDraft(d.models)); setKeyDraft(toKeyDraft(d.models)); setProviderDraft(Object.fromEntries(d.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(d.common_key || ""); setCommonProvider(d.common_provider || "openai"); setSavedCommonKey(d.common_key || ""); setMsg({ ok: true, text: "Saved." });
+      setRows(d.models); setDraft(toDraft(d.models)); setKeyDraft(toKeyDraft(d.models)); setProviderDraft(Object.fromEntries(d.models.map((r) => [r.role, r.provider || "openai"]))); setCommonKey(d.common_key || ""); setCommonProvider(d.common_provider || "openai"); setSavedCommonKey(d.common_key || ""); toast("Models saved");
     } catch (e) {
       setMsg({ ok: false, text: e.message });
     } finally {

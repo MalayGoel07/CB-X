@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, LogOut, Loader2 } from "lucide-react";
+import { useToast } from "./ui";
 
 const inputClass =
   "w-full rounded-lg border border-zinc-700 bg-slate-950 px-3 py-2 text-sm text-zinc-100 outline-none transition-colors placeholder:text-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/40";
@@ -15,6 +16,7 @@ const initials = (text) =>
     .toUpperCase() || "U";
 
 function ProfilePanel({ apiBase, onClose }) {
+  const toast = useToast();
   const API = apiBase;
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
@@ -74,7 +76,7 @@ function ProfilePanel({ apiBase, onClose }) {
       });
       if (!response.ok) throw new Error(`Failed to save profile: ${response.status}`);
       setSaved({ name, nickname, systemPrompt });
-      setStatus({ kind: "ok", text: "Profile saved." });
+      toast("Profile saved");
     } catch (error) {
       console.error("Failed to save profile:", error);
       setStatus({ kind: "error", text: "Unable to save profile. Please try again." });

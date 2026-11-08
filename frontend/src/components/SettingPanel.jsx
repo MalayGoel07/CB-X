@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Trash2 } from "lucide-react";
+import { LogOut, Trash2, Loader2 } from "lucide-react";
+import { useToast, focusRing } from "./ui";
 import {
   FONT_MIN,
   FONT_MAX,
@@ -19,8 +21,35 @@ const THEMES = [
 
 function SettingPanel({ apiBase, onClose, onGuide }) {
   const navigate = useNavigate();
+  const toast = useToast();
   const [theme, setThemeState] = useState(getStoredTheme);
   const [scale, setScaleState] = useState(getStoredFontScale);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const cancelRef = useRef(null);
+
+  // Panel Escape closes the panel, but not while the delete dialog is open.
+  useEffect(() => {
+    if (!onClose) return undefined;
+    const onKey = (e) => e.key === "Escape" && !confirmDelete && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, confirmDelete]);
+
+  // Dialog: focus Cancel, Escape closes it (capture phase so the panel never sees it).
+  useEffect(() => {
+    if (!confirmDelete) return undefined;
+    cancelRef.current?.focus();
+    const onKey = (e) => {
+      if (e.key === "Escape" && !deleting) {
+        e.stopPropagation();
+        setConfirmDelete(false);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [confirmDelete, deleting]);
 
   const chooseTheme = (id) => {
     setThemeState(id);
@@ -35,6 +64,7 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
   const reset = () => {
     chooseTheme("dark");
     chooseScale(1);
+    toast("Appearance reset to defaults");
   };
 
   const logout = () => {
@@ -43,21 +73,24 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
   };
 
   const deleteAccount = async () => {
-    if (!window.confirm("Delete your account and all stored files? This cannot be undone.")) return;
-    const response = await fetch(`${apiBase}/me`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-    });
-    if (!response.ok) {
-      window.alert("Unable to delete your account. Please try again.");
-      return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch(`${apiBase}/me`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      localStorage.removeItem("token");
+      navigate("/");
+    } catch {
+      setDeleteError("Unable to delete your account. Please try again.");
+      setDeleting(false);
     }
-    localStorage.removeItem("token");
-    navigate("/");
   };
 
   const option = (active) =>
-    `rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${
+    `rounded-xl border px-3 py-2 text-xs font-medium transition-colors ${focusRing} ${
       active
         ? "border-blue-500 bg-cyan-500/10 text-cyan-300"
         : "border-zinc-700 bg-slate-950 text-zinc-300 hover:border-blue-500"
@@ -67,7 +100,13 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
     <div className="side-panel box-border h-screen w-[360px] max-w-[100vw] shrink-0 bg-slate-900 flex flex-col overflow-y-auto overflow-x-hidden px-3 z-50 shadow-2xl shadow-black/50">
       <div className="flex items-center justify-between px-2 py-5">
         <span className="font-mono text-[16px] font-bold tracking-[0.25em] text-blue-500 uppercase">Settings</span>
-        <button onClick={onClose} className="text-[13px] font-mono text-red-400 transition-colors">✕ close</button>
+        <button
+          onClick={onClose}
+          aria-label="Close settings"
+          className={`rounded px-1 text-[13px] font-mono text-red-400 transition-colors hover:text-red-300 ${focusRing}`}
+        >
+          <span aria-hidden="true">✕ </span>close
+        </button>
       </div>
 
       <section className="px-1 py-4 border-b border-zinc-800" aria-labelledby="theme-heading">
@@ -90,7 +129,7 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
             </button>
           ))}
         </div>
-        <p className="mt-2 text-[11px] text-zinc-400">System follows your device's light or dark setting.</p>
+        <p className="mt-2 text-[11px] text-zinc-400">System follows your device&apos;s light or dark setting.</p>
       </section>
 
       <section className="px-1 py-4 border-b border-zinc-800" aria-labelledby="font-heading">
@@ -106,13 +145,14 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
           value={scale}
           onChange={(e) => chooseScale(parseFloat(e.target.value))}
           aria-label="Font size"
-          className="w-full accent-cyan-400"
+          className={`w-full accent-cyan-400 ${focusRing}`}
         />
         <div className="mt-3 grid grid-cols-4 gap-2">
           {FONT_PRESETS.map((p) => (
             <button
               key={p.label}
               onClick={() => chooseScale(p.value)}
+              aria-pressed={Math.abs(scale - p.value) < 0.01}
               className={option(Math.abs(scale - p.value) < 0.01)}
             >
               {p.label}
@@ -130,13 +170,13 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
       <div className="px-1 py-4">
         <button
           onClick={onGuide}
-          className="mb-3 h-[44px] w-full rounded-xl border border-cyan-500/50 text-sm font-medium text-cyan-300 transition-colors hover:bg-cyan-500/10"
+          className={`mb-3 h-[44px] w-full rounded-xl border border-cyan-500/50 text-sm font-medium text-cyan-300 transition-colors hover:bg-cyan-500/10 ${focusRing}`}
         >
           Take the tour
         </button>
         <button
           onClick={reset}
-          className="w-full h-[44px] rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 hover:border-blue-500 transition-colors"
+          className={`w-full h-[44px] rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 hover:border-blue-500 transition-colors ${focusRing}`}
         >
           Reset to defaults
         </button>
@@ -144,13 +184,57 @@ function SettingPanel({ apiBase, onClose, onGuide }) {
 
       <section className="space-y-2 border-t border-zinc-800 px-1 py-4" aria-labelledby="account-heading">
         <h2 id="account-heading" className="mb-3 text-sm font-medium text-zinc-100">Account</h2>
-        <button onClick={logout} className="flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 transition-colors hover:border-blue-500">
+        <button
+          onClick={logout}
+          className={`flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-zinc-500 text-sm font-medium text-zinc-200 transition-colors hover:border-blue-500 ${focusRing}`}
+        >
           <LogOut className="h-4 w-4" aria-hidden="true" /> Log out
         </button>
-        <button onClick={deleteAccount} className="flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-red-500/60 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/10">
+        <button
+          onClick={() => { setDeleteError(""); setConfirmDelete(true); }}
+          className="flex h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-red-500/60 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        >
           <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete account
         </button>
       </section>
+
+      {confirmDelete &&
+        createPortal(
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="del-title"
+              aria-describedby="del-desc"
+              className="w-full max-w-sm rounded-2xl border border-red-500/30 bg-slate-900 p-5 shadow-2xl shadow-black/60"
+            >
+              <h2 id="del-title" className="text-base font-semibold text-zinc-100">Delete your account?</h2>
+              <p id="del-desc" className="mt-2 text-sm text-zinc-400">
+                This permanently deletes your account, chats and all stored files. It can&apos;t be undone.
+              </p>
+              {deleteError && <p role="alert" className="mt-3 text-xs text-red-400">{deleteError}</p>}
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  ref={cancelRef}
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleting}
+                  className={`rounded-xl border border-zinc-600 px-4 py-2 text-sm text-zinc-200 transition-colors hover:border-blue-500 disabled:opacity-40 ${focusRing}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={deleteAccount}
+                  disabled={deleting}
+                  className="flex items-center gap-2 rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                >
+                  {deleting && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                  {deleting ? "Deleting…" : "Delete account"}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { API_BASE as API_BASE_URL } from "./config";
 import { authHeaders, handleUnauthorized } from "./auth";
 
-async function base(input, onchunk, history = [], attachments = []) {
+async function base(input, onchunk, history = [], attachments = [],signal) {
     const body = new FormData();
     body.append("message", input);
     body.append("history", JSON.stringify(history));
@@ -9,7 +9,8 @@ async function base(input, onchunk, history = [], attachments = []) {
     const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: authHeaders(),
-        body
+        body,
+        signal,
     });
 
     if (handleUnauthorized(response)) throw new Error("Session expired. Please log in again.");
@@ -119,6 +120,7 @@ async function base(input, onchunk, history = [], attachments = []) {
 
     if (errorText) throw new Error(errorText);
     if (!finalText.trim()) throw new Error("The server stream ended without a final answer.");
+    
     return { text: finalText, tokenCount, files };
 }
 

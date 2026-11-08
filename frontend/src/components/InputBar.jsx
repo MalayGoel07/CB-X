@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Paperclip, SendHorizontal, Loader2, X, FileText, Image as ImageIcon } from "lucide-react";
+import { Paperclip, SendHorizontal, Square, X, FileText, Image as ImageIcon, Upload } from "lucide-react";
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
@@ -8,6 +8,8 @@ const ALLOWED_EXTENSIONS = new Set([
   ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp",
   ".pdf", ".docx", ".txt", ".md", ".py", ".js", ".json", ".csv", ".html", ".css",
 ]);
+
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400";
 
 const getExtension = (name) => {
   const dot = name.lastIndexOf(".");
@@ -18,6 +20,7 @@ function InputBar({
   input,
   onChange,
   onSend,
+  onStop,
   loading,
   attachments,
   onAttachmentsChange,
@@ -101,14 +104,27 @@ function InputBar({
         e.preventDefault();
         if (!loading) setDragging(true);
       }}
-      onDragLeave={() => setDragging(false)}
+      onDragLeave={(e) => {
+        // Ignore leave events fired when moving over a child element.
+        if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false);
+      }}
       onDrop={handleDrop}
-      className={`input-bar flex w-full max-w-[800px] flex-col gap-2 rounded-[24px] border px-3 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 focus-within:border-blue-500 focus-within:bg-slate-950 hover:border-blue-500 hover:shadow-lg hover:shadow-cyan-500/20 ${
+      className={`input-bar relative flex w-full max-w-[800px] flex-col gap-2 rounded-[24px] border px-3 py-2 shadow-2xl backdrop-blur-xl transition-all duration-300 focus-within:border-blue-500 focus-within:bg-slate-950 hover:border-blue-500 hover:shadow-lg hover:shadow-cyan-500/20 motion-reduce:transition-none ${
         dragging
           ? "border-dashed border-cyan-400 bg-cyan-500/10"
           : "border-slate-900 bg-slate-900 hover:bg-slate-950"
       }`}
     >
+      {dragging && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[24px] bg-slate-950/80 text-sm font-medium text-cyan-300"
+        >
+          <Upload className="h-4 w-4" />
+          Drop files to attach
+        </div>
+      )}
+
       {attachments.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label="Attached files">
           {attachments.map((file, index) => {
@@ -125,7 +141,7 @@ function InputBar({
                   onClick={() => removeFile(index)}
                   disabled={loading}
                   aria-label={`Remove ${file.name}`}
-                  className="flex h-5 w-5 items-center justify-center rounded text-zinc-400 transition-colors hover:text-red-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:opacity-40"
+                  className={`flex h-5 w-5 items-center justify-center rounded text-zinc-400 transition-colors hover:text-red-400 disabled:opacity-40 ${focusRing}`}
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -158,7 +174,7 @@ function InputBar({
           disabled={loading}
           aria-label="Attach images or files"
           title="Attach images or files (or drop them here)"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 transition-colors hover:border-cyan-500 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-zinc-300 transition-colors hover:border-cyan-500 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`}
         >
           <Paperclip className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -182,29 +198,28 @@ function InputBar({
           onChange={(e) => onExecutionModeChange(e.target.value)}
           disabled={loading}
           aria-label="Choose model source"
-          title="Choose API or local Ollama for this job"
-          className="h-9 shrink-0 rounded-lg border border-zinc-700 bg-slate-950 px-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 disabled:opacity-40"
+          title="Run the workers on the cloud API or on your own Ollama"
+          className={`h-9 shrink-0 rounded-lg border border-zinc-700 bg-slate-950 px-2 text-xs text-zinc-300 outline-none focus:border-cyan-500 disabled:opacity-40 ${focusRing}`}
         >
-          <option value="api">API</option>
-          <option value="local">Local model</option>
+          <option value="api">Cloud API</option>
+          <option value="local">My Ollama</option>
         </select>
 
         <button
           type="button"
-          onClick={onSend}
-          disabled={!canSend}
-          className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-5 text-sm font-semibold text-black shadow-lg shadow-cyan-500/20 transition-all duration-200 hover:scale-105 hover:from-cyan-300 hover:to-blue-400 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:scale-100"
+          onClick={loading ? onStop : onSend}
+          disabled={loading ? !onStop : !canSend}
+          aria-label={loading ? "Stop generating" : "Send message"}
+          className={`flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all duration-200 motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 ${
+            loading
+              ? "border border-zinc-600 bg-slate-800 text-zinc-100 hover:border-red-400 hover:text-red-300 focus-visible:ring-red-400"
+              : "bg-gradient-to-r from-cyan-400 to-blue-500 text-black shadow-lg shadow-cyan-500/20 hover:scale-105 hover:from-cyan-300 hover:to-blue-400 active:scale-95 focus-visible:ring-cyan-300 disabled:shadow-none disabled:hover:scale-100"
+          }`}
         >
           {loading ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              Thinking…
-            </>
+            <>Stop<Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" /></>
           ) : (
-            <>
-              Send
-              <SendHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-            </>
+            <>Send<SendHorizontal className="h-3.5 w-3.5" aria-hidden="true" /></>
           )}
         </button>
       </div>

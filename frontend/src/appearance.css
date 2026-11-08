@@ -43,3 +43,15 @@ html[data-theme="light"] .app-root :is(.hover\:text-zinc-200, .hover\:text-cyan-
 
 /* the gradient Send button keeps its own dark text */
 html[data-theme="light"] .app-root .text-black { color: #000; }
+
+/* ---------- Light theme: additions ---------- */
+html[data-theme="light"] .app-root :is(.text-zinc-400, .text-zinc-500) { color: #566478; }
+html[data-theme="light"] .app-root .text-green-400 { color: #15803d; }
+html[data-theme="light"] .app-root :is(.text-emerald-300, .text-emerald-400) { color: #047857; }
+html[data-theme="light"] .app-root :is(.hover\:text-red-200, .hover\:text-red-300, .hover\:text-red-400):hover { color: #b91c1c; }
+html[data-theme="light"] .app-root .hover\:text-zinc-100:hover { color: #0f172a; }
+html[data-theme="light"] .app-root .bg-red-500\/10 { background-color: #fef2f2; }
+html[data-theme="light"] .app-root .bg-emerald-500\/10 { background-color: #ecfdf5; }
+
+/* font-scale for the 10px badges */
+html .text-\[10px\] { font-size: calc(10px * var(--fs-scale)); }
