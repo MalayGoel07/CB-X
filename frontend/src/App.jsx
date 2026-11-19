@@ -310,7 +310,7 @@ function App() {
       {showModels && <ModelsPanel apiBase={API} onClose={() => setShowModels(false)} />}
       {showCollection && <CollectionPanel apiBase={API} onClose={() => setShowCollection(false)} />}
 
-      <div className="app-main z-50 flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden p-5 overscroll-none">
+      <div className="app-main z-10 flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-4 overflow-hidden p-5 overscroll-none">
         <TopBar status={backendStatus} detail={syncError} />
 
         <div className="app-grid grid min-h-0 min-w-0 w-full max-w-[1000px] flex-1 grid-cols-[minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto_auto] gap-x-4">
